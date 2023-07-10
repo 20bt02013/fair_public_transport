@@ -3,15 +3,10 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
-// import 'package:typed_data/src/typed_buffer.dart';
-// import 'package:typed_data/src/typed_buffer.dart';
 import '../function/reuse.dart';
 import 'signin_screen.dart';
-// import 'package:mqtt_client/mqtt_client.dart';
-// import 'package:mqtt_client/mqtt_server_client.dart';
-// import 'dart:convert';
-// import 'dart:typed_data';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -31,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String? selectedCurrentItem;
   String? selectedDestinItem;
+  int travelTime = 0;
 
   Stream<QuerySnapshot> getItems() {
     return FirebaseFirestore.instance.collection('locations').snapshots();
@@ -108,7 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Success'),
-            content: const Text('Successfully deducted from your wallet.'),
+            content: const Text(
+                'Successfully deducted from your wallet. Your order has been saved inside the orders menu'),
             actions: [
               TextButton(
                 child: const Text('Refund'),
@@ -132,7 +129,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               TextButton(
                 child: const Text('CONFIRM'),
-                onPressed: () {
+                onPressed: () async {
+                  // Save order information to Firestore
+                  final CollectionReference ordersCollection =
+                      usersCollection.doc(userId).collection('orders');
+
+                  final DateTime now = DateTime.now();
+
+                  final Map<String, dynamic> orderData = {
+                    'date': now,
+                    'location': selectedCurrentItem,
+                    'destination': selectedDestinItem,
+                    'price paid': price,
+                    'status': 'Pending', // Set initial status
+                    'travel time': travelTime,
+                  };
+
+                  await ordersCollection.add(orderData);
                   setState(() {
                     deductedAmount = 0; // Reset the deducted amount
                   });
@@ -149,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void showPreviousOrdersDialog(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double paddingPercentage = 0.1;
+    const double paddingPercentage = 0.1;
     final double paddingVertical = screenHeight * paddingPercentage;
     final double paddingHorizontal = screenWidth * paddingPercentage;
 
@@ -180,20 +193,89 @@ class _HomeScreenState extends State<HomeScreen> {
               vertical: paddingVertical,
               horizontal: paddingHorizontal,
             ),
-            child: Container(
-              // Add your UI to display the previous orders here
-              child: Text('List of previous orders'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, // Align left
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft, // Align left
+                  child: const Text(
+                    'List of previous orders',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FutureBuilder<QuerySnapshot>(
+                  // Rest of the code...
+                  future: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(FirebaseAuth.instance.currentUser!.uid)
+                      .collection('orders')
+                      .get(),
+                  builder: (BuildContext context,
+                      AsyncSnapshot<QuerySnapshot> snapshot) {
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+
+                    final orders = snapshot.data?.docs;
+
+                    if (orders == null || orders.isEmpty) {
+                      return const Text('No previous orders found');
+                    }
+
+                    return Column(
+                      children: orders.map((order) {
+                        final orderData = order.data() as Map<String, dynamic>;
+                        final DateTime orderDate =
+                            orderData['date']?.toDate() as DateTime;
+                        final String location = orderData['location'] as String;
+                        final String destination =
+                            orderData['destination'] as String;
+                        final int price = orderData['price paid'] as int;
+                        final String status = orderData['status'] as String;
+                        final int travelTime = orderData['travel time'] as int;
+                        final orderDateUtc8 =
+                            orderDate.add(const Duration(hours: 8));
+                        final hour = orderDateUtc8.hour > 12
+                            ? orderDateUtc8.hour - 12
+                            : orderDateUtc8.hour;
+                        final period = orderDateUtc8.hour < 12 ? 'AM' : 'PM';
+
+                        return ListTile(
+                          title: Text(
+                            'Order: ${order.id}',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Date: ${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
+                              ),
+                              Text('Location: $location'),
+                              Text('Destination: $destination'),
+                              Text('Price Paid: RM $price'),
+                              Text('Status: $status'),
+                              Text('Travel Time: $travelTime minutes'),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           actions: [
-            Center(
-              child: TextButton(
-                child: const Text('Open Gate'),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ),
+            // Rest of the code...
           ],
         ),
       ),
@@ -522,11 +604,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                             final travelTimeInMinutes =
                                                 data['Travel Time'] as int?;
+                                            travelTime = travelTimeInMinutes ??
+                                                0; // Use the null-aware operator
+
                                             final travelTimeHours =
-                                                (travelTimeInMinutes ?? 0) ~/
-                                                    60;
+                                                travelTime ~/ 60;
                                             final travelTimeMinutes =
-                                                (travelTimeInMinutes ?? 0) % 60;
+                                                travelTime % 60;
 
                                             String formattedTravelTime = '';
 
@@ -768,6 +852,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
+// import 'package:mqtt_client/mqtt_client.dart';
+// import 'package:mqtt_client/mqtt_server_client.dart';
+// import 'dart:convert';
+// import 'dart:typed_data';
+// import 'package:typed_data/src/typed_buffer.dart';
+// import 'package:typed_data/src/typed_buffer.dart';
 
 // Stream<DocumentSnapshot> getItem() {
 //   String docId =
