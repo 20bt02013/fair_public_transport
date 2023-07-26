@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fairpublictransport/screens/passenger_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../function/reuse.dart';
 import 'signin_screen.dart';
@@ -137,11 +137,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   final DateTime now = DateTime.now();
 
                   final Map<String, dynamic> orderData = {
+                    'userName': userName,
+                    'UserId': user?.uid,
                     'date': now,
                     'location': selectedCurrentItem,
                     'destination': selectedDestinItem,
                     'price paid': price,
-                    'status': 'Pending', // Set initial status
+                    'status': 'Paid', // Set initial status
                     'travel time': travelTime,
                   };
 
@@ -166,120 +168,396 @@ class _HomeScreenState extends State<HomeScreen> {
     final double paddingVertical = screenHeight * paddingPercentage;
     final double paddingHorizontal = screenWidth * paddingPercentage;
 
-    showDialog(
+    final scrollController = ScrollController();
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10.0),
-          ),
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      isScrollControlled: true, // Set to true for slow and smooth animation
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10.0)),
+      ),
+      builder: (context) {
+        return SingleChildScrollView(
+          controller: scrollController,
+          child: Stack(
             children: [
-              const Text('Previous Orders'),
-              Align(
-                alignment: Alignment.topRight,
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Icon(Icons.close),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: paddingVertical,
+                  horizontal: paddingHorizontal,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Previous Orders',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    FutureBuilder<QuerySnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(FirebaseAuth.instance.currentUser!.uid)
+                          .collection('orders')
+                          .get(),
+                      builder: (BuildContext context,
+                          AsyncSnapshot<QuerySnapshot> snapshot) {
+                        if (snapshot.hasError) {
+                          return Text('Error: ${snapshot.error}');
+                        }
+
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const CircularProgressIndicator();
+                        }
+
+                        final orders = snapshot.data?.docs;
+
+                        if (orders == null || orders.isEmpty) {
+                          return const Text('No previous orders found');
+                        }
+
+                        // Sort the orders based on the 'orderDate' in descending order
+                        orders.sort((a, b) {
+                          final aDate =
+                              (a.data() as Map<String, dynamic>)['date']
+                                  ?.toDate() as DateTime;
+                          final bDate =
+                              (b.data() as Map<String, dynamic>)['date']
+                                  ?.toDate() as DateTime;
+                          return bDate.compareTo(aDate);
+                        });
+
+                        return Column(
+                          children: orders.map((order) {
+                            final orderData =
+                                order.data() as Map<String, dynamic>;
+                            final DateTime orderDate =
+                                orderData['date']?.toDate() as DateTime;
+                            final String location =
+                                orderData['location'] as String;
+                            final String destination =
+                                orderData['destination'] as String;
+                            final int price = orderData['price paid'] as int;
+                            final String status = orderData['status'] as String;
+                            final int travelTime =
+                                orderData['travel time'] as int;
+                            final orderDateUtc8 =
+                                orderDate.add(const Duration(hours: 8));
+                            final hour = orderDateUtc8.hour > 12
+                                ? orderDateUtc8.hour - 12
+                                : orderDateUtc8.hour;
+                            final period =
+                                orderDateUtc8.hour < 12 ? 'AM' : 'PM';
+
+                            return ListTile(
+                              title: Text(
+                                'Order: ${order.id}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Row(
+                                crossAxisAlignment: CrossAxisAlignment
+                                    .center, // Align children at the center of the height
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Date: ${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
+                                        ),
+                                        Text('Location: $location'),
+                                        Text('Destination: $destination'),
+                                        Text('Price Paid: RM $price'),
+                                        Text(
+                                            'Travel Time: $travelTime minutes'),
+                                        const SizedBox(height: 15),
+                                      ],
+                                    ),
+                                  ),
+                                  if (status ==
+                                      'Paid') // Show as clickable button only if status is 'Paid'
+                                    Column(
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () async {
+                                            try {
+                                              // Update the status in Firestore to 'On Ride'
+                                              final orderRef = FirebaseFirestore
+                                                  .instance
+                                                  .collection('users')
+                                                  .doc(FirebaseAuth.instance
+                                                      .currentUser!.uid)
+                                                  .collection('orders')
+                                                  .doc(order
+                                                      .id); // Replace 'order.id' with the actual order document ID
+
+                                              await orderRef.update(
+                                                  {'status': 'On Ride'});
+
+                                              //call onOpenGateButtonPressed() to send order
+                                              onOpenGateButtonPressed();
+
+                                              // Navigate to the PassengerScreen
+                                              // ignore: use_build_context_synchronously
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      const PassengerScreen(),
+                                                ),
+                                              );
+                                            } catch (e) {
+                                              print(
+                                                  'Error updating status: $e');
+                                            }
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10, horizontal: 18),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                              color: Colors
+                                                  .blue, // You can change the button color here.
+                                            ),
+                                            child: const Text(
+                                              'Open Gate',
+                                              style: TextStyle(
+                                                color: Colors
+                                                    .white, // You can change the text color here.
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        // Add the second widget here, for example, another button or text
+                                        GestureDetector(
+                                          onTap: () {
+                                            _showTrainSchedules(context);
+                                            // Show another showModalBottomSheet for orders that are not 'Paid'
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10, horizontal: 18),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                              color: Colors
+                                                  .red, // You can change the button color here.
+                                            ),
+                                            child: const Text(
+                                              'Schedules',
+                                              style: TextStyle(
+                                                color: Colors
+                                                    .white, // You can change the text color here.
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else // If status is not 'Paid', show the status text
+                                    Text(status),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    )
+                  ],
                 ),
               ),
             ],
           ),
-          content: Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: paddingVertical,
-              horizontal: paddingHorizontal,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, // Align left
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft, // Align left
-                  child: const Text(
-                    'List of previous orders',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+        );
+      },
+    ).whenComplete(() => print("Modal closed"));
+
+    // Add a listener to the scroll controller to check if the user has scrolled to the top.
+    // If the user is at the top, close the bottom sheet.
+    scrollController.addListener(() {
+      if (scrollController.position.pixels == 0) {
+        Navigator.pop(context);
+      }
+    });
+  }
+
+  void onOpenGateButtonPressed() async {
+    // Get the selected location and destination from the user's order
+    String selectedLocation = 'Johor'; // Replace with actual selected location
+    String selectedDestination =
+        'Kuala Lumpur'; // Replace with actual selected destination
+
+    // Get the current time when the user clicks the "Open Gate" button
+    DateTime currentTimeUtc = DateTime.now().toUtc();
+    DateTime currentTimeUtcPlus8 = currentTimeUtc.add(const Duration(hours: 8));
+
+    // Retrieve the train data from Firestore that matches the selected location and destination
+    QuerySnapshot trainSnapshot = await FirebaseFirestore.instance
+        .collection('locations')
+        .doc(selectedLocation)
+        .collection('destinations')
+        .doc(selectedDestination)
+        .collection('Trains')
+        .orderBy('Depart', descending: true)
+        .limit(1)
+        .get();
+
+    // Check if the train data is available and meets the criteria
+    if (trainSnapshot.docs.isNotEmpty) {
+      DocumentSnapshot trainDoc = trainSnapshot.docs.first;
+      Map<String, dynamic> trainData = trainDoc.data() as Map<String, dynamic>;
+
+      // Get the "Depart" time as a string in the format "15:00"
+      String departTime = trainData['Depart'] as String;
+
+      // Parse the "Depart" time string into a DateTime object
+      DateTime departDateTime = DateTime(
+        currentTimeUtcPlus8.year,
+        currentTimeUtcPlus8.month,
+        currentTimeUtcPlus8.day,
+        int.parse(
+            departTime.split(':')[0]), // Extract hours from the time string
+        int.parse(
+            departTime.split(':')[1]), // Extract minutes from the time string
+      );
+
+      // Compare the "Depart" time with the current time
+      if (departDateTime.isAfter(currentTimeUtcPlus8)) {
+        // Get the train document ID
+        String trainDocId = trainDoc.id;
+
+        // Create the user's order data
+        Map<String, dynamic> orderData = {
+          'userName': userName, // Replace with the user's name
+          'orderDetails':
+              'Mak Kau Paling Hijau', // Replace with actual order details
+          // Add other relevant order information here
+        };
+
+        // Save the user's order in the "passengers" collection under the specific train document
+        await FirebaseFirestore.instance
+            .collection('locations')
+            .doc(selectedLocation)
+            .collection('destinations')
+            .doc(selectedDestination)
+            .collection('Trains')
+            .doc(trainDocId)
+            .collection('passengers')
+            .add(orderData);
+
+        print(departTime);
+        print(currentTimeUtcPlus8);
+
+        // Show a success message to the user or handle any other actions
+      } else {
+        // Show a message to the user that the train has already departed
+        print("Train has already departed");
+      }
+    } else {
+      // Show a message to the user that no suitable train was found
+      print("No suitable train found");
+    }
+  }
+
+  void _showTrainSchedules(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10.0)),
+      ),
+      builder: (context) {
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future:
+              _fetchTrainSchedules(), // Call the function to retrieve train data
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}');
+            } else {
+              final trainSchedules = snapshot.data;
+              if (trainSchedules == null || trainSchedules.isEmpty) {
+                return const Text('No train schedules found');
+              }
+
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20, // Replace with your desired vertical padding
+                    horizontal:
+                        16, // Replace with your desired horizontal padding
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Add content for the bottom sheet here
+                      const Text(
+                        'Train Schedules',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      for (var schedule in trainSchedules)
+                        ListTile(
+                          title: Text('Arrive: ${schedule['Arrive']}'),
+                          subtitle: Text('Depart: ${schedule['Depart']}'),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                FutureBuilder<QuerySnapshot>(
-                  // Rest of the code...
-                  future: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(FirebaseAuth.instance.currentUser!.uid)
-                      .collection('orders')
-                      .get(),
-                  builder: (BuildContext context,
-                      AsyncSnapshot<QuerySnapshot> snapshot) {
-                    if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    }
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const CircularProgressIndicator();
-                    }
-
-                    final orders = snapshot.data?.docs;
-
-                    if (orders == null || orders.isEmpty) {
-                      return const Text('No previous orders found');
-                    }
-
-                    return Column(
-                      children: orders.map((order) {
-                        final orderData = order.data() as Map<String, dynamic>;
-                        final DateTime orderDate =
-                            orderData['date']?.toDate() as DateTime;
-                        final String location = orderData['location'] as String;
-                        final String destination =
-                            orderData['destination'] as String;
-                        final int price = orderData['price paid'] as int;
-                        final String status = orderData['status'] as String;
-                        final int travelTime = orderData['travel time'] as int;
-                        final orderDateUtc8 =
-                            orderDate.add(const Duration(hours: 8));
-                        final hour = orderDateUtc8.hour > 12
-                            ? orderDateUtc8.hour - 12
-                            : orderDateUtc8.hour;
-                        final period = orderDateUtc8.hour < 12 ? 'AM' : 'PM';
-
-                        return ListTile(
-                          title: Text(
-                            'Order: ${order.id}',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Date: ${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
-                              ),
-                              Text('Location: $location'),
-                              Text('Destination: $destination'),
-                              Text('Price Paid: RM $price'),
-                              Text('Status: $status'),
-                              Text('Travel Time: $travelTime minutes'),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            // Rest of the code...
-          ],
-        ),
-      ),
+              );
+            }
+          },
+        );
+      },
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTrainSchedules() async {
+    String selectedLocation = 'Johor'; // Replace with actual selected location
+    String selectedDestination =
+        'Kuala Lumpur'; // Replace with actual selected destination
+
+    QuerySnapshot trainSnapshot = await FirebaseFirestore.instance
+        .collection('locations')
+        .doc(selectedLocation)
+        .collection('destinations')
+        .doc(selectedDestination)
+        .collection('Trains')
+        .get();
+
+    if (trainSnapshot.docs.isNotEmpty) {
+      List<Map<String, dynamic>> trainSchedules = [];
+      for (var doc in trainSnapshot.docs) {
+        Map<String, dynamic> trainData = doc.data() as Map<String, dynamic>;
+        trainSchedules.add(trainData);
+      }
+      return trainSchedules;
+    } else {
+      return [];
+    }
   }
 
   @override
@@ -433,7 +711,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding:
                                   const EdgeInsets.only(left: 10.0, top: 10.0),
                               child: Text(
-                                'Ride Safely    Ride Comfortably \n    Enjoy the journey',
+                                'Ride Safely,   \nRide Comfortably, \nEnjoy the journey...',
                                 style: GoogleFonts.blinker(
                                   textStyle: const TextStyle(
                                     fontSize: 20,
