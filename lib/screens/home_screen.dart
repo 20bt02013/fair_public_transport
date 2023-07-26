@@ -310,7 +310,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   {'status': 'On Ride'});
 
                                               //call onOpenGateButtonPressed() to send order
-                                              onOpenGateButtonPressed();
+                                              //onOpenGateButtonPressed();
+                                              await onOpenGateButtonPressed(
+                                                  location, destination);
 
                                               // Navigate to the PassengerScreen
                                               // ignore: use_build_context_synchronously
@@ -349,7 +351,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         // Add the second widget here, for example, another button or text
                                         GestureDetector(
                                           onTap: () {
-                                            _showTrainSchedules(context);
+                                            _showTrainSchedules(
+                                                context, location, destination);
+                                            print('$location $destination');
                                             // Show another showModalBottomSheet for orders that are not 'Paid'
                                           },
                                           child: Container(
@@ -400,11 +404,11 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void onOpenGateButtonPressed() async {
+  Future<void> onOpenGateButtonPressed(
+      String selectedLocation, String selectedDestination) async {
     // Get the selected location and destination from the user's order
-    String selectedLocation = 'Johor'; // Replace with actual selected location
-    String selectedDestination =
-        'Kuala Lumpur'; // Replace with actual selected destination
+    // String selectedLocation = 'Johor'; // Replace with actual selected location
+    // String selectedDestination = 'Kuala Lumpur'; // Replace with actual selected destination
 
     // Get the current time when the user clicks the "Open Gate" button
     DateTime currentTimeUtc = DateTime.now().toUtc();
@@ -449,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Map<String, dynamic> orderData = {
           'userName': userName, // Replace with the user's name
           'orderDetails':
-              'Mak Kau Paling Hijau', // Replace with actual order details
+              'Kau Paling Hijau', // Replace with actual order details
           // Add other relevant order information here
         };
 
@@ -478,7 +482,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showTrainSchedules(BuildContext context) {
+  void _showTrainSchedules(BuildContext context, String selectedLocation,
+      String selectedDestination) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -487,17 +492,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       builder: (context) {
         return FutureBuilder<List<Map<String, dynamic>>>(
-          future:
-              _fetchTrainSchedules(), // Call the function to retrieve train data
+          future: _fetchTrainSchedules(selectedLocation,
+              selectedDestination), // Call the function to retrieve train data
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator());
             } else if (snapshot.hasError) {
               return Text('Error: ${snapshot.error}');
             } else {
               final trainSchedules = snapshot.data;
               if (trainSchedules == null || trainSchedules.isEmpty) {
-                return const Text('No train schedules found');
+                return const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons
+                          .train, // Replace 'Icons.train' with the desired icon
+                      color: Colors
+                          .grey, // Replace 'Colors.grey' with the desired icon color
+                    ),
+                    SizedBox(
+                        width:
+                            8), // Add some spacing between the icon and the text
+                    Text(
+                      '\nNo train schedules found\n',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                );
               }
 
               return SingleChildScrollView(
@@ -535,11 +560,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _fetchTrainSchedules() async {
-    String selectedLocation = 'Johor'; // Replace with actual selected location
-    String selectedDestination =
-        'Kuala Lumpur'; // Replace with actual selected destination
-
+  Future<List<Map<String, dynamic>>> _fetchTrainSchedules(
+      String selectedLocation, String selectedDestination) async {
     QuerySnapshot trainSnapshot = await FirebaseFirestore.instance
         .collection('locations')
         .doc(selectedLocation)
