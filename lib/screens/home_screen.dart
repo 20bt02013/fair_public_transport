@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fairpublictransport/screens/passenger_screen.dart';
+import 'package:fairpublictransport/screens/seatAssignmentScreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -21,12 +21,16 @@ class _HomeScreenState extends State<HomeScreen> {
   String userName = '';
   String category = '';
   int ewallet = 0;
+  int age = 0;
   int deductedAmount = 0;
   bool paymentMade = false;
+  String trainDocId = '';
 
   String? selectedCurrentItem;
   String? selectedDestinItem;
   int travelTime = 0;
+
+  List<bool>? get seatSelections => null;
 
   Stream<QuerySnapshot> getItems() {
     return FirebaseFirestore.instance.collection('locations').snapshots();
@@ -74,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
         userName = userData['name'];
         category = userData['category'];
         ewallet = userData['ewallet'];
+        age = userData['age'];
       });
     }
   }
@@ -139,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   final Map<String, dynamic> orderData = {
                     'userName': userName,
                     'UserId': user?.uid,
+                    'category': category,
+                    'age': age,
                     'date': now,
                     'location': selectedCurrentItem,
                     'destination': selectedDestinItem,
@@ -248,6 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 orderData['date']?.toDate() as DateTime;
                             final String location =
                                 orderData['location'] as String;
+                            final String category =
+                                orderData['category'] as String? ??
+                                    'No Category';
+                            final int age = orderData['age'] as int? ?? 0;
                             final String destination =
                                 orderData['destination'] as String;
                             final int price = orderData['price paid'] as int;
@@ -261,6 +272,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : orderDateUtc8.hour;
                             final period =
                                 orderDateUtc8.hour < 12 ? 'AM' : 'PM';
+
+                            final String trainDocId =
+                                orderData['trainDocId'] as String? ??
+                                    'No trainDocId';
 
                             return ListTile(
                               title: Text(
@@ -278,8 +293,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Date: ${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
+                                          'Date: ${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
                                         ),
+                                        Text('Category: $category'),
+                                        Text('Age: $age'),
                                         Text('Location: $location'),
                                         Text('Destination: $destination'),
                                         Text('Price Paid: RM $price'),
@@ -296,33 +313,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                         GestureDetector(
                                           onTap: () async {
                                             try {
-                                              // Update the status in Firestore to 'On Ride'
-                                              final orderRef = FirebaseFirestore
-                                                  .instance
-                                                  .collection('users')
-                                                  .doc(FirebaseAuth.instance
-                                                      .currentUser!.uid)
-                                                  .collection('orders')
-                                                  .doc(order
-                                                      .id); // Replace 'order.id' with the actual order document ID
-
-                                              await orderRef.update(
-                                                  {'status': 'On Ride'});
-
                                               //call onOpenGateButtonPressed() to send order
                                               //onOpenGateButtonPressed();
                                               await onOpenGateButtonPressed(
-                                                  location, destination);
-
-                                              // Navigate to the PassengerScreen
-                                              // ignore: use_build_context_synchronously
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) =>
-                                                      const PassengerScreen(),
-                                                ),
-                                              );
+                                                  order.id,
+                                                  location,
+                                                  destination,
+                                                  orderDate,
+                                                  price,
+                                                  travelTime,
+                                                  category,
+                                                  age);
                                             } catch (e) {
                                               print(
                                                   'Error updating status: $e');
@@ -377,6 +378,53 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                       ],
                                     )
+                                  else if (status ==
+                                      'On Ride') // Show as clickable button only if status is 'Paid'
+                                    Column(
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () async {
+                                            // Navigate to SeatAssignmentScreen and pass the order data
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    SeatAssignmentScreen(
+                                                        selectedOrderId:
+                                                            order.id,
+                                                        passselectedLocation:
+                                                            location,
+                                                        passselectedDestination:
+                                                            destination,
+                                                        passtrainDocId:
+                                                            trainDocId),
+                                              ),
+                                            );
+                                            print('$order.id');
+                                            print('$trainDocId');
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10, horizontal: 18),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                              color: Colors
+                                                  .blue, // You can change the button color here.
+                                            ),
+                                            child: const Text(
+                                              'Seat Assign Page',
+                                              style: TextStyle(
+                                                color: Colors
+                                                    .white, // You can change the text color here.
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // Add the second widget here, for example, another button or text
+                                      ],
+                                    )
                                   else // If status is not 'Paid', show the status text
                                     Text(status),
                                 ],
@@ -404,12 +452,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> onOpenGateButtonPressed(
-      String selectedLocation, String selectedDestination) async {
-    // Get the selected location and destination from the user's order
-    // String selectedLocation = 'Johor'; // Replace with actual selected location
-    // String selectedDestination = 'Kuala Lumpur'; // Replace with actual selected destination
+  // bool areSeatsFull(List<bool> seatSelections) {
+  //   return seatSelections.every((isSelected) => isSelected);
+  // }
 
+  Future<void> onOpenGateButtonPressed(
+      String orderId,
+      String selectedLocation,
+      String selectedDestination,
+      DateTime orderDate,
+      int price,
+      int travelTime,
+      String category,
+      int age) async {
     // Get the current time when the user clicks the "Open Gate" button
     DateTime currentTimeUtc = DateTime.now().toUtc();
     DateTime currentTimeUtcPlus8 = currentTimeUtc.add(const Duration(hours: 8));
@@ -452,8 +507,15 @@ class _HomeScreenState extends State<HomeScreen> {
         // Create the user's order data
         Map<String, dynamic> orderData = {
           'userName': userName, // Replace with the user's name
-          'orderDetails':
-              'Kau Paling Hijau', // Replace with actual order details
+          'userId': user?.uid,
+          'date': orderDate,
+          'category': category,
+          'age': age,
+          'location': selectedLocation,
+          'destination': selectedDestination,
+          'price paid': price,
+          'status': 'On Ride', // Set initial status
+          'travel time': travelTime,
           // Add other relevant order information here
         };
 
@@ -466,20 +528,76 @@ class _HomeScreenState extends State<HomeScreen> {
             .collection('Trains')
             .doc(trainDocId)
             .collection('passengers')
-            .add(orderData);
+            .doc(orderId) // Use the order ID as the document ID
+            .set(orderData); // Use 'set' instead of 'add'
 
-        print(departTime);
-        print(currentTimeUtcPlus8);
+        // Update the status in Firestore to 'On Ride'
+        final orderRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .collection('orders')
+            .doc(
+                orderId); // Replace 'order.id' with the actual order document ID
+
+        await orderRef.update({'status': 'On Ride', 'trainDocId': trainDocId});
+
+        // ignore: use_build_context_synchronously
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SeatAssignmentScreen(
+                selectedOrderId: orderId,
+                passselectedLocation: selectedLocation,
+                passselectedDestination: selectedDestination,
+                passtrainDocId: trainDocId),
+          ),
+        );
 
         // Show a success message to the user or handle any other actions
       } else {
         // Show a message to the user that the train has already departed
         print("Train has already departed");
+        showTrainDepartedBottomSheet(context);
       }
     } else {
       // Show a message to the user that no suitable train was found
       print("No suitable train found");
     }
+  }
+
+  void showTrainDepartedBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10.0)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text(
+                'Train has already departed',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // You can add additional content or buttons if needed
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close the bottom sheet
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showTrainSchedules(BuildContext context, String selectedLocation,
@@ -597,7 +715,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+              filter: ImageFilter.blur(sigmaX: 7, sigmaY: 4),
               child: Container(
                 color: Colors.black.withOpacity(0),
               ),
@@ -617,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
             top: MediaQuery.of(context).size.height * 0.1,
             right: MediaQuery.of(context).size.width * 0.09,
             child: Text(
-              'Fair Public\nTransport',
+              '     UIS FYP \n 20BT02013',
               style: GoogleFonts.blinker(
                 textStyle: const TextStyle(
                   color: Color(0xff343341),
@@ -636,42 +754,74 @@ class _HomeScreenState extends State<HomeScreen> {
                   FirebaseAuth.instance.signOut().then((value) {
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Success'),
-                        content: const Text('Log out successfully.'),
-                        actions: [
-                          TextButton(
-                            child: const Text('OK'),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const SignInScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                      builder: (context) => WillPopScope(
+                        onWillPop: () async {
+                          // Handle the sign-out process here
+                          Navigator.pop(context); // Pop the dialog route
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SignInScreen(),
+                            ),
+                          );
+                          return true;
+                        },
+                        child: AlertDialog(
+                          title: const Text('Success'),
+                          content: const Text('Log out successfully.'),
+                          actions: [
+                            TextButton(
+                              child: const Text('OK'),
+                              onPressed: () {
+                                // Handle the sign-out process here
+                                Navigator.pop(context); // Pop the dialog route
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const SignInScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   });
                 },
-                child: const Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.login_outlined),
-                      onPressed: null,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(
+                      10, // Replace with the border radius you desire
                     ),
-                    Text(
-                      'LOG OUT',
-                      style: TextStyle(
-                        color: Color(0xff343341),
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: .5,
+                    color: Colors.grey.withOpacity(
+                        0.9), // Replace with the background color you desire
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                    ), // Adjust horizontal padding as needed
+                    child: IntrinsicWidth(
+                      // Wrap the Row with an IntrinsicWidth widget
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.login_outlined),
+                            onPressed: null,
+                          ),
+                          Text(
+                            'LOG OUT',
+                            style: TextStyle(
+                              color: Color(0xff343341),
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: .5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -687,7 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const SizedBox(height: 10),
                     Text(
-                      'Fair Public\nTransport',
+                      'Fair Public\nTransport (MY)',
                       style: GoogleFonts.blinker(
                         textStyle: const TextStyle(
                           color: Colors.black,
@@ -715,7 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: MediaQuery.of(context).size.height * 0.9 * 0.65,
                         decoration: BoxDecoration(
-                          color: Colors.blueGrey.withOpacity(0.85),
+                          color: Colors.blueGrey.withOpacity(0.9),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
@@ -1152,127 +1302,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-// import 'package:mqtt_client/mqtt_client.dart';
-// import 'package:mqtt_client/mqtt_server_client.dart';
-// import 'dart:convert';
-// import 'dart:typed_data';
-// import 'package:typed_data/src/typed_buffer.dart';
-// import 'package:typed_data/src/typed_buffer.dart';
-
-// Stream<DocumentSnapshot> getItem() {
-//   String docId =
-//       'currents'; // Replace 'your_document_id' with the specific document ID you want to retrieve
-//   return FirebaseFirestore.instance
-//       .collection('locations')
-//       .doc(docId)
-//       .snapshots();
-// }
-
-// StreamBuilder<DocumentSnapshot>(
-//   stream: getItem(),
-//   builder: (
-//     BuildContext context,
-//     AsyncSnapshot<DocumentSnapshot> snapshot,
-//   ) {
-//     if (snapshot.hasError) {
-//       return Text('Error: ${snapshot.error}');
-//     }
-//
-//     if (snapshot.connectionState ==
-//         ConnectionState.waiting) {
-//       return CircularProgressIndicator();
-//     }
-//
-//     if (!snapshot.hasData ||
-//         !snapshot.data!.exists) {
-//       return Text('Document not found');
-//     }
-//
-//     final itemData = snapshot.data!.data()
-//         as Map<String, dynamic>;
-//
-//     // List all the fields in the itemData map
-//     final fields = itemData.entries.map((entry) {
-//       //final field = entry.key;
-//       final value = entry.value;
-//       return ' $value';
-//     }).toList();
-//
-//     return Column(
-//       children: [
-//         DropdownButton<String>(
-//           value: selectedCurrentItem,
-//           onChanged: (String? newValue) {
-//             setState(() {
-//               selectedCurrentItem = newValue;
-//             });
-//           },
-//           items: fields
-//               .map<DropdownMenuItem<String>>(
-//                   (String value) {
-//             return DropdownMenuItem<String>(
-//               value: value,
-//               child: Text(value),
-//             );
-//           }).toList(),
-//         ),
-//         // Add any additional UI elements or widgets as needed
-//       ],
-//     );
-//   },
-// ),
-
-// StreamBuilder<QuerySnapshot>(
-//   stream: getItems(),
-//   builder: (
-//     BuildContext context,
-//     AsyncSnapshot<QuerySnapshot> snapshot,
-//   ) {
-//     if (snapshot.hasError) {
-//       return Text('Error: ${snapshot.error}');
-//     }
-//
-//     if (snapshot.connectionState ==
-//         ConnectionState.waiting) {
-//       return CircularProgressIndicator();
-//     }
-//
-//     final items = snapshot.data!.docs
-//         .map<String>((doc) => doc['name'] as String)
-//         .toList();
-//
-//     return Container(
-//       padding: const EdgeInsets.only(
-//           left:
-//               10), // Set the desired left padding here
-//       child: Row(
-//         children: [
-//           const Text(
-//             'Select\nDestination: ',
-//             style: TextStyle(
-//               fontWeight: FontWeight.bold,
-//             ),
-//           ),
-//           const SizedBox(width: 50),
-//           DropdownButton<String>(
-//             value: selectedDestinItem,
-//             onChanged: (String? newValue) {
-//               setState(() {
-//                 selectedDestinItem = newValue;
-//               });
-//             },
-//             items: items
-//                 .map<DropdownMenuItem<String>>(
-//                     (String value) {
-//               return DropdownMenuItem<String>(
-//                 value: value,
-//                 child: Text(value),
-//               );
-//             }).toList(),
-//           ),
-//         ],
-//       ),
-//     );
-//   },
-// ),

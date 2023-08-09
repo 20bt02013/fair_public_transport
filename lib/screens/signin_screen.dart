@@ -6,7 +6,6 @@ import 'package:fairpublictransport/function/reuse.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'fs_examplescreen.dart';
-import 'seatAssignmentScreen.dart';
 //import 'test_screen.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -59,10 +58,10 @@ class _SignInScreenState extends State<SignInScreen> {
             child: IconButton(
               icon: const Icon(Icons.accessible),
               onPressed: () {
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const SeatAssignmentScreen()));
+                // Navigator.push(
+                //     context,
+                //     MaterialPageRoute(
+                //         builder: (context) => const SeatAssignmentScreen()));
                 // Do something when the icon is pressed
               },
             ),
@@ -107,7 +106,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       width: MediaQuery.of(context).size.width * 0.8,
                       height: MediaQuery.of(context).size.height * 0.9 * 0.65,
                       decoration: BoxDecoration(
-                        color: Colors.blueGrey.withOpacity(0.7),
+                        color: Colors.blueGrey.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
@@ -151,7 +150,6 @@ class _SignInScreenState extends State<SignInScreen> {
                                     email: _emailTextController.text,
                                     password: _passwordTextController.text)
                                 .then((value) {
-                              print("Log in successfully!");
                               Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -202,10 +200,6 @@ class _SignInScreenState extends State<SignInScreen> {
             child: IconButton(
               icon: const Icon(Icons.tram_outlined),
               onPressed: () {
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const HomeScreen()));
                 // Do something when the icon is pressed
               },
             ),
