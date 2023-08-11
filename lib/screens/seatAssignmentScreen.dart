@@ -29,12 +29,14 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   late List<bool> seatSelections;
   int? selectedSeat;
   bool? isSeatConfirmed;
+  List<Map<String, dynamic>> allSeatInfo = []; // To store all seat info
 
   @override
   void initState() {
     super.initState();
     seatSelections = List.generate(8, (index) => false);
     fetchIsSeatConfirmedAndSelectedSeat(); // Fetch the isSeatConfirmed value from Firestore
+    fetchAllSeatInfo();
   }
 
   // Method to fetch the isSeatConfirmed & SelectedSeat value from Firestore
@@ -77,6 +79,38 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     }
   }
 
+  Future<void> fetchAllSeatInfo() async {
+    final selectedLocation = widget.passselectedLocation;
+    final selectedDestination = widget.passselectedDestination;
+    final trainDocId = widget.passtrainDocId;
+
+    try {
+      final seatDocs = await FirebaseFirestore.instance
+          .collection('locations')
+          .doc(selectedLocation)
+          .collection('destinations')
+          .doc(selectedDestination)
+          .collection('Trains')
+          .doc(trainDocId)
+          .collection('Seats')
+          .get();
+
+      final seatInfoList = seatDocs.docs
+          .map((doc) => {
+                'isSeatConfirmed': doc['isSeatConfirmed'] ?? false,
+                'seatNumber': doc['seatNumber'],
+                'passengerId': doc['passengerId'],
+              })
+          .toList();
+
+      setState(() {
+        allSeatInfo = seatInfoList; // Store all seat info in state
+      });
+    } catch (error) {
+      print('Error fetching seat information: $error');
+    }
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> getSeatsStream() {
     final selectedLocation = widget.passselectedLocation;
     final selectedDestination = widget.passselectedDestination;
@@ -96,11 +130,23 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   Widget buildSeatButton(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final int seatNumber = doc['seatNumber'];
     final bool isSelected = doc['isSelected'];
+    final bool isSeatConfirmed = doc['isSeatConfirmed'];
+    final String passengerId = doc['passengerId'];
+    final String selectedOrderId = widget.selectedOrderId;
+
+    bool isSelectable = true; // Determine whether the seat is selectable
+
+    if (isSeatConfirmed && passengerId != widget.selectedOrderId) {
+      isSelectable = false;
+    }
 
     return SeatButton(
       seatNumber: seatNumber,
       isSelected: isSelected,
-      isSeatConfirmed: isSeatConfirmed ?? false,
+      isSeatConfirmed: isSeatConfirmed,
+      isSelectable: isSelectable,
+      selectedOrderId: selectedOrderId,
+      passengerId: passengerId, // Pass passengerId to SeatButton
       onSeatButtonPressed: onSeatButtonPressed,
     );
   }
@@ -477,7 +523,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                 // ... Display order details ...
 
                                 // StreamBuilder for seat buttons
-                                // StreamBuilder for seat buttons
                                 StreamBuilder<
                                     QuerySnapshot<Map<String, dynamic>>>(
                                   stream: getSeatsStream(),
@@ -497,28 +542,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: seatDocs
-                                                  .sublist(0, 1)
-                                                  .map((doc) =>
-                                                      buildSeatButton(doc))
-                                                  .toList(),
-                                            ),
-                                            Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.end,
-                                              children: seatDocs
-                                                  .sublist(1, 2)
-                                                  .map((doc) =>
-                                                      buildSeatButton(doc))
-                                                  .toList(),
-                                            ),
+                                            // Loop through all seatDocs and build seat buttons
+                                            for (final doc in seatDocs)
+                                              buildSeatButton(doc),
                                             // Display Confirm or Modify button based on isSeatConfirmed
                                             buildConfirmationButton(),
                                           ],
@@ -549,24 +575,40 @@ class SeatButton extends StatelessWidget {
   final int seatNumber;
   final bool isSelected;
   final bool isSeatConfirmed;
+  final bool isSelectable;
+  final String passengerId; // Add passengerId parameter
+  final String selectedOrderId;
   final Function(int, bool) onSeatButtonPressed;
 
   const SeatButton({
     required this.seatNumber,
     required this.isSelected,
     required this.isSeatConfirmed,
+    required this.selectedOrderId,
+    required this.isSelectable,
+    required this.passengerId, // Receive passengerId
     required this.onSeatButtonPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => onSeatButtonPressed(seatNumber, !isSelected),
+      onTap: () {
+        if (isSelectable) {
+          onSeatButtonPressed(seatNumber, !isSelected);
+        }
+      },
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: isSelected ? Colors.red : Colors.green,
+          color: isSeatConfirmed && passengerId == selectedOrderId
+              ? Colors.black
+              : isSeatConfirmed
+                  ? Colors.red
+                  : isSelected
+                      ? Colors.lightBlueAccent
+                      : Colors.green,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: Colors.white,
