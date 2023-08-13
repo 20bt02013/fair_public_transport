@@ -151,21 +151,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     );
   }
 
-  // Function to build the Confirm or Modify button based on isSeatConfirmed
-  Widget buildConfirmationButton() {
-    final bool isConfirmed = isSeatConfirmed ?? false;
-
-    return !isConfirmed
-        ? ElevatedButton(
-            onPressed: selectedSeat != null ? confirmSeat : null,
-            child: Text("Confirm Seat"),
-          )
-        : ElevatedButton(
-            onPressed: modifySeat,
-            child: Text("Modify Seat"),
-          );
-  }
-
   Future<Map<String, dynamic>> fetchSelectedOrder(
       String selectedOrderId,
       String passselectedLocation,
@@ -302,6 +287,130 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     }
   }
 
+  Future<void> standUp() async {
+    try {
+      final orderData = await fetchSelectedOrder(
+        widget.selectedOrderId,
+        widget.passselectedLocation,
+        widget.passselectedDestination,
+        widget.passtrainDocId,
+      );
+
+      final selectedLocation = orderData['location'];
+      final selectedDestination = orderData['destination'];
+
+      if (selectedLocation != null && selectedDestination != null) {
+        final batch = FirebaseFirestore.instance.batch();
+
+        // Update the isSeatConfirmed status in Firestore to false
+        batch.set(
+          FirebaseFirestore.instance
+              .collection('locations')
+              .doc(selectedLocation)
+              .collection('destinations')
+              .doc(selectedDestination)
+              .collection('Trains')
+              .doc(widget.passtrainDocId)
+              .collection('Seats')
+              .doc(selectedSeat.toString()),
+          {
+            'passengerId': 'Not occupied',
+            'isSelected': false,
+            'isSeatConfirmed': false,
+          },
+          SetOptions(merge: true),
+        );
+
+        // Commit the batch
+        await batch.commit();
+
+        // Update local state to reflect the unconfirmation
+        setState(() {
+          isSeatConfirmed = false;
+        });
+
+        // Fetch updated seat information from Firestore
+        await fetchAllSeatInfo(); // refresh allSeatInfo
+
+        print("Stand Up");
+      }
+    } catch (error) {
+      print('Error standing up: $error');
+    }
+  }
+
+  // Function to build the Confirm or Modify button based on isSeatConfirmed
+  Widget buildConfirmationButton() {
+    final bool isConfirmed = isSeatConfirmed ?? false;
+
+    // Check if all seats are occupied
+    final bool allSeatsOccupied =
+        allSeatInfo.every((seatInfo) => seatInfo['isSeatConfirmed'] == true);
+
+    print('allSeatsOccupied: $allSeatsOccupied');
+
+    if (!isConfirmed) {
+      return allSeatsOccupied
+          ? Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.red, width: 2),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white60,
+              ),
+              padding: EdgeInsets.all(8),
+              child: const Text(
+                "Sorry all seat is occupied",
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            )
+          : ElevatedButton(
+              onPressed: selectedSeat != null ? confirmSeat : null,
+              child: Text("Confirm Seat"),
+            );
+    } else {
+      return Column(
+        children: [
+          allSeatsOccupied
+              ? Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.red, width: 2),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white60,
+                  ),
+                  padding: EdgeInsets.all(8),
+                  child: Column(
+                    children: [
+                      const Text(
+                        "All seats are occupied,\nCannot modify",
+                        style: TextStyle(
+                            color: Colors.red, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      ElevatedButton(
+                        onPressed: standUp,
+                        child: Text("Stand"),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    ElevatedButton(
+                      onPressed: modifySeat,
+                      child: Text("Modify Seat"),
+                    ),
+                    ElevatedButton(
+                      onPressed: standUp,
+                      child: Text("Stand"),
+                    ),
+                  ],
+                ),
+        ],
+      );
+    }
+  }
+
   // Function to handle seat confirmation
   Future<void> confirmSeat() async {
     if (selectedSeat == null) {
@@ -379,6 +488,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           isSeatConfirmed = true;
         });
 
+        // Fetch updated seat information from Firestore
+        await fetchAllSeatInfo(); // refresh allSeatInfo
+
         print("Seat Confirmed");
       }
     } catch (error) {
@@ -400,6 +512,15 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
       if (selectedLocation != null && selectedDestination != null) {
         final batch = FirebaseFirestore.instance.batch();
+
+        // Check if all seats are confirmed
+        final bool allSeatsConfirmed = allSeatInfo
+            .every((seatInfo) => seatInfo['isSeatConfirmed'] == true);
+
+        if (allSeatsConfirmed) {
+          print("Sorry all seats are occupied, Cannot modify");
+          return;
+        }
 
         // Update the isSeatConfirmed status in Firestore
         batch.set(
@@ -425,6 +546,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         setState(() {
           isSeatConfirmed = false;
         });
+
+        // Fetch updated seat information from Firestore
+        await fetchAllSeatInfo(); // refresh allSeatInfo
 
         print("Modify Seat");
       }
@@ -536,19 +660,33 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                       final seatDocs =
                                           snapshot.data?.docs ?? [];
 
-                                      return Padding(
-                                        padding: const EdgeInsets.all(16.0),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            // Loop through all seatDocs and build seat buttons
-                                            for (final doc in seatDocs)
-                                              buildSeatButton(doc),
-                                            // Display Confirm or Modify button based on isSeatConfirmed
-                                            buildConfirmationButton(),
-                                          ],
-                                        ),
+                                      return Column(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.all(16.0),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                // Loop through seatDocs and build seat buttons
+                                                for (final doc in seatDocs)
+                                                  buildSeatButton(doc),
+                                              ],
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(16.0),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                // Display Confirm or Modify button based on isSeatConfirmed
+                                                buildConfirmationButton(),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       );
                                     }
                                   },
