@@ -24,10 +24,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int age = 0;
   int deductedAmount = 0;
   bool paymentMade = false;
-  String trainDocId = '';
 
   String? selectedCurrentItem;
   String? selectedDestinItem;
+  String? path;
   int travelTime = 0;
 
   List<bool>? get seatSelections => null;
@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> deductFromWallet(int price) async {
+  Future<void> deductFromWallet(int price, String? newPath) async {
     final CollectionReference usersCollection =
         FirebaseFirestore.instance.collection('users');
     final String userId = FirebaseAuth.instance.currentUser!.uid;
@@ -103,6 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         setState(() {
           ewallet = updatedWallet;
+          path = newPath;
         });
 
         showDialog(
@@ -152,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     'price paid': price,
                     'status': 'Paid', // Set initial status
                     'travel time': travelTime,
+                    'path': newPath
                   };
 
                   await ordersCollection.add(orderData);
@@ -273,6 +275,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             final period =
                                 orderDateUtc8.hour < 12 ? 'AM' : 'PM';
 
+                            final String path =
+                                orderData['path'] as String? ?? 'Missing';
+
                             final String trainDocId =
                                 orderData['trainDocId'] as String? ??
                                     'No trainDocId';
@@ -314,7 +319,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                           onTap: () async {
                                             try {
                                               //call onOpenGateButtonPressed() to send order
-                                              //onOpenGateButtonPressed();
                                               await onOpenGateButtonPressed(
                                                   order.id,
                                                   location,
@@ -323,7 +327,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   price,
                                                   travelTime,
                                                   category,
-                                                  age);
+                                                  age,
+                                                  path);
                                             } catch (e) {
                                               print(
                                                   'Error updating status: $e');
@@ -384,6 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         GestureDetector(
                                           onTap: () async {
+                                            Navigator.pop(context);
                                             // Navigate to SeatAssignmentScreen and pass the order data
                                             Navigator.push(
                                               context,
@@ -397,11 +403,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         passselectedDestination:
                                                             destination,
                                                         passtrainDocId:
-                                                            trainDocId),
+                                                            trainDocId,
+                                                        passAge: age,
+                                                        passCategory: category,
+                                                        passTraveltime:
+                                                            travelTime,
+                                                        passPath: path),
                                               ),
                                             );
-                                            print('$order.id');
-                                            print('$trainDocId');
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(
@@ -452,22 +461,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // bool areSeatsFull(List<bool> seatSelections) {
-  //   return seatSelections.every((isSelected) => isSelected);
-  // }
-
   Future<void> onOpenGateButtonPressed(
-      String orderId,
-      String selectedLocation,
-      String selectedDestination,
-      DateTime orderDate,
-      int price,
-      int travelTime,
-      String category,
-      int age) async {
+    String orderId,
+    String selectedLocation,
+    String selectedDestination,
+    DateTime orderDate,
+    int price,
+    int travelTime,
+    String category,
+    int age,
+    String path,
+  ) async {
     // Get the current time when the user clicks the "Open Gate" button
     DateTime currentTimeUtc = DateTime.now().toUtc();
-    DateTime currentTimeUtcPlus8 = currentTimeUtc.add(const Duration(hours: 8));
+    Duration durationToAdd = Duration(hours: 8);
+    DateTime currentTimeUtcPlus8 = currentTimeUtc.add(durationToAdd);
 
     // Retrieve the train data from Firestore that matches the selected location and destination
     QuerySnapshot trainSnapshot = await FirebaseFirestore.instance
@@ -476,92 +484,117 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('destinations')
         .doc(selectedDestination)
         .collection('Trains')
-        .orderBy('Depart', descending: true)
-        .limit(1)
+        .orderBy('Depart',
+            descending: false) // Order in ascending order of departures
         .get();
 
-    // Check if the train data is available and meets the criteria
-    if (trainSnapshot.docs.isNotEmpty) {
-      DocumentSnapshot trainDoc = trainSnapshot.docs.first;
+    // Initialize variables to track the nearest departure time and train document ID
+    String nearestTrainDocId = ''; // Initialize with an empty string
+
+    // Iterate through the train data to find the nearest departure time after the current time
+    for (DocumentSnapshot trainDoc in trainSnapshot.docs) {
       Map<String, dynamic> trainData = trainDoc.data() as Map<String, dynamic>;
 
-      // Get the "Depart" time as a string in the format "15:00"
-      String departTime = trainData['Depart'] as String;
+      String train = trainData['train'] as String;
 
-      // Parse the "Depart" time string into a DateTime object
-      DateTime departDateTime = DateTime(
-        currentTimeUtcPlus8.year,
-        currentTimeUtcPlus8.month,
-        currentTimeUtcPlus8.day,
-        int.parse(
-            departTime.split(':')[0]), // Extract hours from the time string
-        int.parse(
-            departTime.split(':')[1]), // Extract minutes from the time string
+      // Inside the for loop
+      Timestamp departTimestamp = trainData['Depart'] as Timestamp;
+      DateTime departDateTime =
+          departTimestamp.toDate(); // Convert Timestamp to DateTime
+
+// Adjust for UTC+8 offset
+      departDateTime = DateTime(
+        departDateTime.year,
+        departDateTime.month,
+        departDateTime.day,
+        departDateTime.hour + 8, // Add 8 hours for UTC+8
+        departDateTime.minute,
+        departDateTime.second,
       );
 
-      // Compare the "Depart" time with the current time
-      if (departDateTime.isAfter(currentTimeUtcPlus8)) {
-        // Get the train document ID
-        String trainDocId = trainDoc.id;
-
-        // Create the user's order data
-        Map<String, dynamic> orderData = {
-          'userName': userName, // Replace with the user's name
-          'userId': user?.uid,
-          'date': orderDate,
-          'category': category,
-          'age': age,
-          'location': selectedLocation,
-          'destination': selectedDestination,
-          'price paid': price,
-          'status': 'On Ride', // Set initial status
-          'travel time': travelTime,
-          // Add other relevant order information here
-        };
-
-        // Save the user's order in the "passengers" collection under the specific train document
-        await FirebaseFirestore.instance
-            .collection('locations')
-            .doc(selectedLocation)
-            .collection('destinations')
-            .doc(selectedDestination)
-            .collection('Trains')
-            .doc(trainDocId)
-            .collection('passengers')
-            .doc(orderId) // Use the order ID as the document ID
-            .set(orderData); // Use 'set' instead of 'add'
-
-        // Update the status in Firestore to 'On Ride'
-        final orderRef = FirebaseFirestore.instance
-            .collection('users')
-            .doc(FirebaseAuth.instance.currentUser!.uid)
-            .collection('orders')
-            .doc(
-                orderId); // Replace 'order.id' with the actual order document ID
-
-        await orderRef.update({'status': 'On Ride', 'trainDocId': trainDocId});
-
-        // ignore: use_build_context_synchronously
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SeatAssignmentScreen(
-                selectedOrderId: orderId,
-                passselectedLocation: selectedLocation,
-                passselectedDestination: selectedDestination,
-                passtrainDocId: trainDocId),
-          ),
+// Compare departDateTime with currentTimeUtcPlus8
+      if (departDateTime.isBefore(currentTimeUtcPlus8)) {
+        // Update the date part to today's date
+        print('Before: $departDateTime');
+        departDateTime = DateTime(
+          currentTimeUtcPlus8.year,
+          currentTimeUtcPlus8.month,
+          currentTimeUtcPlus8.day,
+          departDateTime.hour,
+          departDateTime.minute,
+          departDateTime.second,
         );
-
-        // Show a success message to the user or handle any other actions
-      } else {
-        // Show a message to the user that the train has already departed
-        print("Train has already departed");
-        showTrainDepartedBottomSheet(context);
+        print('After:$departDateTime');
       }
+
+// Compare departDateTime with currentTimeUtcPlus8 again after updating the date
+      if (departDateTime.isAfter(currentTimeUtcPlus8)) {
+        nearestTrainDocId = train;
+        break; // Exit the loop after finding the nearest departure
+      }
+    }
+
+    if (nearestTrainDocId.isNotEmpty) {
+      // Rest of your code to create order data and update Firestore
+      // Create the user's order data
+      Map<String, dynamic> orderData = {
+        'userName': userName, // Replace with the user's name
+        'userId': user?.uid,
+        'date': orderDate,
+        'category': category,
+        'age': age,
+        'location': selectedLocation,
+        'destination': selectedDestination,
+        'price paid': price,
+        'status': 'On Ride', // Set initial status
+        'travel time': travelTime,
+        'path': path,
+        'trainDocId': nearestTrainDocId
+        // Add other relevant order information here
+      };
+
+      // Save the user's order in the "passengers" collection under the specific train document
+      await FirebaseFirestore.instance
+          .collection('paths')
+          .doc(path)
+          .collection('Trains')
+          .doc(nearestTrainDocId) // Use nearestTrainDocId here
+          .collection('passengers')
+          .doc(orderId) // Use the order ID as the document ID
+          .set(orderData); // Use 'set' instead of 'add'
+
+      // Update the status in Firestore to 'On Ride'
+      final orderRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser!.uid)
+          .collection('orders')
+          .doc(orderId); // Replace 'order.id' with the actual order document ID
+
+      await orderRef
+          .update({'status': 'On Ride', 'trainDocId': nearestTrainDocId});
+
+      print('currentTimeUtcPlus8: $currentTimeUtcPlus8');
+      print('nearestTrainDocId: $nearestTrainDocId');
+
+      // ignore: use_build_context_synchronously
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SeatAssignmentScreen(
+              selectedOrderId: orderId,
+              passselectedLocation: selectedLocation,
+              passselectedDestination: selectedDestination,
+              passtrainDocId: nearestTrainDocId,
+              passAge: age,
+              passCategory: category,
+              passTraveltime: travelTime,
+              passPath: path),
+        ),
+      );
     } else {
       // Show a message to the user that no suitable train was found
       print("No suitable train found");
+      showTrainDepartedBottomSheet(context);
     }
   }
 
@@ -883,7 +916,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding:
                                   const EdgeInsets.only(left: 10.0, top: 10.0),
                               child: Text(
-                                'Ride Safely,   \nRide Comfortably, \nEnjoy the journey...',
+                                'Ride Safely,   Ride Comfortably, \nEnjoy the journey... ', //ttime:$travelTime path:$path destination:$selectedDestinItem
                                 style: GoogleFonts.blinker(
                                   textStyle: const TextStyle(
                                     fontSize: 20,
@@ -1074,6 +1107,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                             final price = data['Price'] as int?;
 
+                                            final path =
+                                                data['path'] as String?;
+
                                             return Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
@@ -1129,6 +1165,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         ),
                                                       ],
                                                     ),
+                                                    Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        const Text(
+                                                          'Path:',
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          '${path}',
+                                                          style:
+                                                              const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ],
                                                 ),
                                                 const SizedBox(height: 20),
@@ -1162,7 +1220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                             currentBalance >=
                                                                 price) {
                                                           await deductFromWallet(
-                                                              price);
+                                                              price, path);
                                                           deductedAmount =
                                                               price; // Store the deducted amount
                                                           paymentMade =

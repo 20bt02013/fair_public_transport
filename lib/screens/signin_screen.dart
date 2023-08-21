@@ -91,7 +91,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Welcome',
+                      'Welcome ',
                       style: GoogleFonts.blinker(
                         textStyle: const TextStyle(
                           color: Color(0xff343341),
