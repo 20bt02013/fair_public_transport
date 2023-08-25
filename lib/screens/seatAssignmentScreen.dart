@@ -4,9 +4,53 @@
 //import 'package:firebase_auth/firebase_auth.dart';
 //import 'dart:html';
 
+// Show an AlertDialog to the replaced passenger
+// if (removedPassenger == widget.selectedOrderId) {
+// showDialog(
+// context: context,
+// builder: (BuildContext context) {
+// return AlertDialog(
+// title: Text('Seat Reassigned'),
+// content: Text(
+// 'Sorry, please stand...\nYour seat (Seat $earliestSeatNumber) has been reassigned to a priority individual.'),
+// actions: <Widget>[
+// TextButton(
+// onPressed: () {
+// Navigator.of(context).pop();
+// },
+// child: Text('OK'),
+// ),
+// ],
+// );
+// },
+// );
+// }
+
+// if (allSeatsOccupied && !hasSamePassengerId) {
+//   showDialog(
+//     context: context,
+//     builder: (BuildContext context) {
+//       return AlertDialog(
+//         title: Text('Seat Replacement'),
+//         content: Text(
+//             'Sorry, please stand...\nYour seat (Seat $selectedSeat) has been given to a priority individual.'),
+//         actions: <Widget>[
+//           TextButton(
+//             onPressed: () {
+//               Navigator.of(context).pop();
+//             },
+//             child: Text('OK'),
+//           ),
+//         ],
+//       );
+//     },
+//   );
+// }
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'dart:async';
 //import 'package:google_fonts/google_fonts.dart';
 
 class SeatAssignmentScreen extends StatefulWidget {
@@ -41,82 +85,143 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   bool? isSeatConfirmed;
   List<Map<String, dynamic>> allSeatInfo = []; // To store all seat info
   bool? allSeatsOccupied;
+  late StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
+      seatListener; // Add this line
 
   @override
   void initState() {
     super.initState();
     seatSelections = List.generate(4, (index) => false);
-    fetchIsSeatConfirmedAndSelectedSeat(); // Fetch the isSeatConfirmed value from Firestore
-    fetchAllSeatInfo();
+    listenToSeatChanges(); // Start listening to seat changes
     createSeatsCollectionIfNotExists();
+    fetchSeatInfo(widget.selectedOrderId);
   }
 
-  // Method to fetch the isSeatConfirmed & SelectedSeat value from Firestore
-  Future<void> fetchIsSeatConfirmedAndSelectedSeat() async {
+  void listenToSeatChanges() {
     final trainDocId = widget.passtrainDocId;
     final path = widget.passPath;
 
-    try {
-      final seatDocs = await FirebaseFirestore.instance
-          .collection('paths')
-          .doc(path)
-          .collection('Trains')
-          .doc(trainDocId)
-          .collection('Seats')
-          .where('passengerId', isEqualTo: widget.selectedOrderId)
-          .limit(1)
-          .get();
+    final seatDocRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('Seats');
 
-      if (seatDocs.docs.isNotEmpty) {
-        final seatDoc = seatDocs.docs.first;
+    seatListener = seatDocRef.snapshots().listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        final seatInfoList = snapshot.docs.map((doc) {
+          return {
+            'isSeatConfirmed': doc['isSeatConfirmed'] ?? false,
+            'seatNumber': doc['seatNumber'],
+            'passengerId': doc['passengerId'],
+            'timeConfirm': doc['timeConfirm'],
+            'category': doc['category'],
+            'replacement': doc['replacement'],
+          };
+        }).toList();
+
+        bool hasSamePassengerId = false;
+
+        for (final seatInfo in seatInfoList) {
+          if (seatInfo['passengerId'] == widget.selectedOrderId) {
+            setState(() {
+              selectedSeat = seatInfo['seatNumber'];
+              isSeatConfirmed = seatInfo['isSeatConfirmed'];
+            });
+            hasSamePassengerId = true;
+            break;
+          }
+        }
+
+        if (!hasSamePassengerId) {
+          setState(() {
+            isSeatConfirmed = false;
+            selectedSeat = null;
+          });
+        }
+
+        for (final seatInfo in seatInfoList) {
+          if (seatInfo['replacement'] == widget.selectedOrderId) {
+            final earliestSeatNumber =
+                seatInfo['seatNumber']; // Make sure this value is available
+            final path = widget.passPath;
+
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: Text('Seat Reassigned'),
+                  content: Text(
+                      'Sorry, please stand...\nYour seat (Seat $earliestSeatNumber) has been reassigned to a priority individual.'),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () async {
+                        await FirebaseFirestore.instance
+                            .collection('paths')
+                            .doc(path)
+                            .collection('Trains')
+                            .doc(widget.passtrainDocId)
+                            .collection('Seats')
+                            .doc(earliestSeatNumber.toString())
+                            .update({
+                          'replacement': null,
+                        });
+                        Navigator.of(context).pop();
+                      },
+                      child: Text('OK $earliestSeatNumber'),
+                    ),
+                  ],
+                );
+              },
+            );
+            break;
+          }
+        }
+
         setState(() {
-          isSeatConfirmed = seatDoc['isSeatConfirmed'] ?? false;
-          selectedSeat = seatDoc['seatNumber'];
-        });
-      } else {
-        setState(() {
-          isSeatConfirmed = false;
-          selectedSeat = null;
+          allSeatInfo = seatInfoList; // Update all seat info in state
         });
       }
-    } catch (error) {
-      print('Error fetching isSeatConfirmed and selectedSeat values: $error');
-      setState(() {
-        isSeatConfirmed = false;
-        selectedSeat = null;
-      });
-    }
+    });
   }
 
-  Future<void> fetchAllSeatInfo() async {
-    final trainDocId = widget.passtrainDocId;
+  @override
+  void dispose() {
+    seatListener.cancel(); // Cancel the listener when the widget is disposed
+    super.dispose();
+  }
+
+  Future<void> fetchSeatInfo(String selectedOrderId) async {
     final path = widget.passPath;
+    final trainDocId = widget.passtrainDocId;
 
-    try {
-      final seatDocs = await FirebaseFirestore.instance
-          .collection('paths')
-          .doc(path)
-          .collection('Trains')
-          .doc(trainDocId)
-          .collection('Seats')
-          .get();
+    final seatDocRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('Seats')
+        .where('passengerId', isEqualTo: widget.selectedOrderId);
 
-      final seatInfoList = seatDocs.docs
-          .map((doc) => {
-                'isSeatConfirmed': doc['isSeatConfirmed'] ?? false,
-                'seatNumber': doc['seatNumber'],
-                'passengerId': doc['passengerId'],
-                'timeConfirm': doc['timeConfirm'],
-                //'isSelected': doc['isSelected'],
-                'category': doc['category'],
-              })
-          .toList();
+    final snapshot = await seatDocRef.get();
+
+    if (snapshot.docs.isNotEmpty) {
+      final seatInfo = snapshot.docs[0].data();
+
+      final int? fetchedSeatNumber = seatInfo['seatNumber'] as int?;
+      final bool? fetchedIsSeatConfirmed = seatInfo['isSeatConfirmed'] as bool?;
 
       setState(() {
-        allSeatInfo = seatInfoList; // Store all seat info in state
+        selectedSeat = fetchedSeatNumber;
+        isSeatConfirmed = fetchedIsSeatConfirmed;
       });
-    } catch (error) {
-      print('Error fetching seat information: $error');
+    } else {
+      print('mak kau hijau');
+      setState(() {
+        selectedSeat = null;
+        isSeatConfirmed = null;
+      });
     }
   }
 
@@ -150,7 +255,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               'isSelected': false,
               'isSeatConfirmed': false,
               'timeConfirm': null,
-              'category': 'Unknown'
+              'category': 'Unknown',
+              'replacement': null,
             },
           );
         }
@@ -158,8 +264,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         // Commit the batch to create the documents
         await batch.commit();
         print('Seats collection created with documents.');
-
-        await fetchAllSeatInfo();
       }
     } catch (error) {
       print('Error creating Seats collection: $error');
@@ -259,10 +363,11 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               .collection('Seats')
               .doc(selectedSeat.toString());
 
+          // Reset fields when seat is deselected
           batch.set(
             prevSeatDocRef,
             {
-              'passengerId': 'Not occupied',
+              'passengerId': 'Not occupied', // Reset passengerId
               'isSelected': false,
               'isSeatConfirmed': false,
               'timeConfirm': null,
@@ -308,7 +413,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     }
   }
 
+  // Function to handle standing up from a seat
   Future<void> standUp() async {
+    if (selectedSeat == null) {
+      print("No seat selected to stand up from.");
+      return;
+    }
+
     try {
       final orderData = await fetchSelectedOrder(
         widget.selectedOrderId,
@@ -323,7 +434,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         final batch = FirebaseFirestore.instance.batch();
 
         // Update the isSeatConfirmed status in Firestore to false
-        batch.set(
+        batch.update(
           FirebaseFirestore.instance
               .collection('paths')
               .doc(path)
@@ -338,7 +449,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'timeConfirm': null,
             'category': 'Unknown',
           },
-          SetOptions(merge: true),
         );
 
         // Commit the batch
@@ -347,15 +457,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         // Update local state to reflect the unconfirmation
         setState(() {
           isSeatConfirmed = false;
-        });
-
-        // Fetch updated seat information from Firestore
-        await fetchAllSeatInfo(); // refresh allSeatInfo
-
-        // Update the state of allSeatsOccupied
-        setState(() {
-          allSeatsOccupied = allSeatInfo
-              .every((seatInfo) => seatInfo['isSeatConfirmed'] == true);
+          selectedSeat = null;
         });
 
         print("Stand Up");
@@ -364,27 +466,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
       print('Error standing up: $error');
     }
   }
-
-  // Show the replacement dialog
-  //showReplacementDialog(context);
-
-  // // You might also want to update the previously occupied seat
-  // if (selectedSeat != null) {
-  //   FirebaseFirestore.instance
-  //       .collection('paths')
-  //       .doc(path)
-  //       .collection('Trains')
-  //       .doc(widget.passtrainDocId)
-  //       .collection('Seats')
-  //       .doc(selectedSeat.toString())
-  //       .update({
-  //     'passengerId': 'Not occupied',
-  //     'isSelected': false,
-  //     'isSeatConfirmed': false,
-  //     'timeConfirm': null,
-  //     'category': 'Unknown',
-  //   });
-  // }
 
   // Function to build the Confirm or Modify button based on isSeatConfirmed
   Future<Widget> buildConfirmationButton() async {
@@ -412,11 +493,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         // Find the earliest timeConfirm among all seats
         DateTime earliestTimeConfirm = DateTime.now();
         int? earliestSeatNumber;
+        String? removedPassenger;
 
         // Find the earliest confirm seat among occupied seats
         for (final seatInfo in allSeatInfo) {
           final DateTime? timeConfirm = seatInfo['timeConfirm']?.toDate();
           final String seatCategory = seatInfo['category'];
+          final passengerRemoved = seatInfo['passengerId'];
 
           if ((seatCategory != "Pregnant" &&
                   seatCategory != "Handicapped (OKU)" &&
@@ -426,6 +509,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               timeConfirm.isBefore(earliestTimeConfirm)) {
             earliestTimeConfirm = timeConfirm;
             earliestSeatNumber = seatInfo['seatNumber'];
+            removedPassenger = passengerRemoved;
           }
         }
 
@@ -444,6 +528,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'isSeatConfirmed': true,
             'timeConfirm': DateTime.now(),
             'category': widget.passCategory,
+            'replacement': removedPassenger,
           });
 
           // Update local state and other necessary operations
@@ -470,7 +555,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  await fetchAllSeatInfo();
                   standUp();
                 },
                 child: const Text("Stand"),
@@ -549,34 +633,12 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     }
   }
 
-  // void showReplacementDialog(BuildContext context) {
-  //   showDialog(
-  //     context: context,
-  //     builder: (BuildContext context) {
-  //       return AlertDialog(
-  //         title: Text('Seat Replacement'),
-  //         content: Text(
-  //             'Sorry, please stand...\nYour seat has been given to a priority individual.'),
-  //         actions: [
-  //           TextButton(
-  //             onPressed: () {
-  //               Navigator.pop(context); // Close the dialog
-  //             },
-  //             child: Text('OK'),
-  //           ),
-  //         ],
-  //       );
-  //     },
-  //   );
-  // }
-
   // Function to handle seat confirmation
   Future<void> confirmSeat() async {
     if (selectedSeat == null) {
       print("Please select a seat before confirming.");
       return;
     }
-    print(selectedSeat);
 
     try {
       final orderData = await fetchSelectedOrder(
@@ -588,7 +650,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
       final path = orderData['path'];
       final trainDocId = orderData['trainDocId'];
 
-      final DateTime now = DateTime.now();
+      print("Selected Seat: $selectedSeat"); // Add this line
+      print("Path: $path, Train Doc ID: $trainDocId"); // Add this line
 
       if (path != null && trainDocId != null) {
         final batch = FirebaseFirestore.instance.batch();
@@ -603,13 +666,14 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               .collection('Seats')
               .doc(selectedSeat.toString());
 
+          // Reset fields for the previously selected seat
           batch.set(
             prevSeatDocRef,
             {
               'passengerId': 'Not occupied',
               'isSelected': false,
               'isSeatConfirmed': false,
-              'timeConfirm': 'no passenger',
+              'timeConfirm': null,
               'category': 'Unknown',
             },
             SetOptions(merge: true),
@@ -622,8 +686,11 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             .collection('Trains')
             .doc(widget.passtrainDocId)
             .collection('Seats')
-            .doc(selectedSeat!.toString());
+            .doc(selectedSeat.toString());
 
+        final DateTime now = DateTime.now();
+
+        // Set fields for the selected seat when confirming
         batch.set(
           seatDocRef,
           {
@@ -640,13 +707,11 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         // Commit the batch
         await batch.commit();
 
-        // Update local state to reflect the confirmation
-        setState(() {
-          isSeatConfirmed = true;
-        });
-
-        // Fetch updated seat information from Firestore
-        await fetchAllSeatInfo(); // refresh allSeatInfo
+        // // Update local state to reflect the confirmation
+        // setState(() {
+        //   isSeatConfirmed = true;
+        //   // Remove this line, as you don't need to update selectedSeat here
+        // });
 
         print("Seat Confirmed");
       }
@@ -655,7 +720,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     }
   }
 
+  // Function to handle modifying a seat
   void modifySeat() async {
+    if (selectedSeat == null) {
+      print("Please select a seat to modify.");
+      return;
+    }
+
     try {
       final orderData = await fetchSelectedOrder(
         widget.selectedOrderId,
@@ -669,17 +740,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
       if (path != null && trainDocId != null) {
         final batch = FirebaseFirestore.instance.batch();
 
-        // Check if all seats are confirmed
-        final bool allSeatsConfirmed = allSeatInfo
-            .every((seatInfo) => seatInfo['isSeatConfirmed'] == true);
-
-        if (allSeatsConfirmed) {
-          print("Sorry all seats are occupied, Cannot modify");
-          return;
-        }
-
         // Update the isSeatConfirmed status in Firestore
-        batch.set(
+        batch.update(
           FirebaseFirestore.instance
               .collection('paths')
               .doc(path)
@@ -687,10 +749,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               .doc(widget.passtrainDocId)
               .collection('Seats')
               .doc(selectedSeat.toString()),
-          {
-            'isSeatConfirmed': false,
-          },
-          SetOptions(merge: true),
+          {'isSeatConfirmed': false},
         );
 
         // Commit the batch
@@ -700,9 +759,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         setState(() {
           isSeatConfirmed = false;
         });
-
-        // Fetch updated seat information from Firestore
-        await fetchAllSeatInfo(); // refresh allSeatInfo
 
         print("Modify Seat");
       }
@@ -795,7 +851,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                           left: 15.0, top: 20.0),
                                       child: Text(
                                         'Choose your seat.. $isSeatConfirmed \n ${widget.selectedOrderId} \n $selectedSeat ${widget.passCategory}   '
-                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} $allSeatsOccupied',
+                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation}',
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold),

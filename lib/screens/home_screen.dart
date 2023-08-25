@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../function/reuse.dart';
 import 'signin_screen.dart';
+import 'package:intl/intl.dart';
+import 'dart:core';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -29,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String? selectedDestinItem;
   String? path;
   int travelTime = 0;
+
+  DateTime now = DateTime.now();
 
   List<bool>? get seatSelections => null;
 
@@ -208,6 +212,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontSize: 16,
                           ),
                         ),
+                        const SizedBox(width: 60),
+                        const Text(
+                          'Refresh...',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
                           child: const Icon(Icons.close),
@@ -267,13 +279,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             final String status = orderData['status'] as String;
                             final int travelTime =
                                 orderData['travel time'] as int;
-                            final orderDateUtc8 =
-                                orderDate.add(const Duration(hours: 8));
-                            final hour = orderDateUtc8.hour > 12
-                                ? orderDateUtc8.hour - 12
-                                : orderDateUtc8.hour;
-                            final period =
-                                orderDateUtc8.hour < 12 ? 'AM' : 'PM';
+
+                            final hour = orderDate.hour > 12
+                                ? orderDate.hour - 12
+                                : orderDate.hour;
+                            final period = orderDate.hour < 12 ? 'AM' : 'PM';
 
                             final String path =
                                 orderData['path'] as String? ?? 'Missing';
@@ -298,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Date: ${orderDateUtc8.day.toString().padLeft(2, '0')}-${orderDateUtc8.month.toString().padLeft(2, '0')}-${orderDateUtc8.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDateUtc8.minute.toString().padLeft(2, '0')} $period',
+                                          'Date: ${orderDate.day.toString().padLeft(2, '0')}-${orderDate.month.toString().padLeft(2, '0')}-${orderDate.year.toString()} \n ${hour.toString().padLeft(2, '0')}:${orderDate.minute.toString().padLeft(2, '0')} $period',
                                         ),
                                         Text('Category: $category'),
                                         Text('Age: $age'),
@@ -323,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   order.id,
                                                   location,
                                                   destination,
-                                                  orderDate,
+                                                  // orderDate,
                                                   price,
                                                   travelTime,
                                                   category,
@@ -391,6 +401,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                           onTap: () async {
                                             Navigator.pop(context);
                                             // Navigate to SeatAssignmentScreen and pass the order data
+
+                                            //         passselectedLocation: selectedLocation,
+                                            //         passselectedDestination: selectedDestination,
+                                            //         passtrainDocId: nearestTrainDocId,
+                                            //         passAge: age,
+                                            //         passCategory: category,
+                                            //         passTraveltime: travelTime,
+                                            //         passPath: path),
+                                            //   ),
+                                            // );
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -465,17 +485,15 @@ class _HomeScreenState extends State<HomeScreen> {
     String orderId,
     String selectedLocation,
     String selectedDestination,
-    DateTime orderDate,
     int price,
     int travelTime,
     String category,
     int age,
     String path,
   ) async {
-    // Get the current time when the user clicks the "Open Gate" button
-    DateTime currentTimeUtc = DateTime.now().toUtc();
-    Duration durationToAdd = Duration(hours: 8);
-    DateTime currentTimeUtcPlus8 = currentTimeUtc.add(durationToAdd);
+    // Get the current time when the user clicks the "Open Gate" button in UTC+8
+    final DateTime now = DateTime.now();
+    // final DateTime nowPlus8Hours = now.add(Duration(hours: 8));
 
     // Retrieve the train data from Firestore that matches the selected location and destination
     QuerySnapshot trainSnapshot = await FirebaseFirestore.instance
@@ -484,12 +502,12 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('destinations')
         .doc(selectedDestination)
         .collection('Trains')
-        .orderBy('Depart',
-            descending: false) // Order in ascending order of departures
+        .orderBy('Depart', descending: false)
         .get();
 
     // Initialize variables to track the nearest departure time and train document ID
-    String nearestTrainDocId = ''; // Initialize with an empty string
+    String nearestTrainDocId = '';
+    DateTime? nearestDepartTime;
 
     // Iterate through the train data to find the nearest departure time after the current time
     for (DocumentSnapshot trainDoc in trainSnapshot.docs) {
@@ -498,49 +516,41 @@ class _HomeScreenState extends State<HomeScreen> {
       String train = trainData['train'] as String;
 
       // Inside the for loop
-      Timestamp departTimestamp = trainData['Depart'] as Timestamp;
-      DateTime departDateTime =
-          departTimestamp.toDate(); // Convert Timestamp to DateTime
+      String departTimeString = trainData['Depart'] as String;
+      int departHour = int.parse(departTimeString.split(':')[0]);
+      int departMinute = int.parse(departTimeString.split(':')[1]);
 
-// Adjust for UTC+8 offset
-      departDateTime = DateTime(
-        departDateTime.year,
-        departDateTime.month,
-        departDateTime.day,
-        departDateTime.hour + 8, // Add 8 hours for UTC+8
-        departDateTime.minute,
-        departDateTime.second,
+      DateTime departTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        departHour,
+        departMinute,
       );
 
-// Compare departDateTime with currentTimeUtcPlus8
-      if (departDateTime.isBefore(currentTimeUtcPlus8)) {
-        // Update the date part to today's date
-        print('Before: $departDateTime');
-        departDateTime = DateTime(
-          currentTimeUtcPlus8.year,
-          currentTimeUtcPlus8.month,
-          currentTimeUtcPlus8.day,
-          departDateTime.hour,
-          departDateTime.minute,
-          departDateTime.second,
-        );
-        print('After:$departDateTime');
-      }
+      if (departTime.isAfter(now)) {
+        print('Depart time: $departTime');
+        print('Now: $now');
 
-// Compare departDateTime with currentTimeUtcPlus8 again after updating the date
-      if (departDateTime.isAfter(currentTimeUtcPlus8)) {
         nearestTrainDocId = train;
+        nearestDepartTime = departTime;
+        print('nearestDepartTime: $nearestDepartTime');
         break; // Exit the loop after finding the nearest departure
       }
     }
 
-    if (nearestTrainDocId.isNotEmpty) {
-      // Rest of your code to create order data and update Firestore
-      // Create the user's order data
+    if (nearestTrainDocId.isNotEmpty && nearestDepartTime != null) {
+      // Calculate arriveTime based on nearestDepartTime and travelTime
+      DateTime arriveTime =
+          nearestDepartTime.add(Duration(minutes: travelTime));
+
+      print('arriveTime: $arriveTime');
+      // Rest of the code remains the same...
+      // Create the user's order data using the current time in UTC+8
       Map<String, dynamic> orderData = {
         'userName': userName, // Replace with the user's name
         'userId': user?.uid,
-        'date': orderDate,
+        'openGatePress': now, // Use current time in UTC+8 as the order date
         'category': category,
         'age': age,
         'location': selectedLocation,
@@ -549,7 +559,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'status': 'On Ride', // Set initial status
         'travel time': travelTime,
         'path': path,
-        'trainDocId': nearestTrainDocId
+        'trainDocId': nearestTrainDocId,
+        'arriveTime': arriveTime
         // Add other relevant order information here
       };
 
@@ -573,9 +584,6 @@ class _HomeScreenState extends State<HomeScreen> {
       await orderRef
           .update({'status': 'On Ride', 'trainDocId': nearestTrainDocId});
 
-      print('currentTimeUtcPlus8: $currentTimeUtcPlus8');
-      print('nearestTrainDocId: $nearestTrainDocId');
-
       // ignore: use_build_context_synchronously
       Navigator.push(
         context,
@@ -591,9 +599,12 @@ class _HomeScreenState extends State<HomeScreen> {
               passPath: path),
         ),
       );
+      print('${nearestTrainDocId}');
     } else {
       // Show a message to the user that no suitable train was found
       print("No suitable train found");
+      print('${nearestTrainDocId}');
+      print('${nearestDepartTime}');
       showTrainDepartedBottomSheet(context);
     }
   }
@@ -633,6 +644,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _formatTime(String timeString) {
+    DateTime currentTime = DateTime.now();
+    String formattedTime =
+        DateFormat('MMM dd, yyyy').format(currentTime) + ' - $timeString';
+    return formattedTime;
+  }
+
   void _showTrainSchedules(BuildContext context, String selectedLocation,
       String selectedDestination) {
     showModalBottomSheet(
@@ -657,14 +675,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons
-                          .train, // Replace 'Icons.train' with the desired icon
-                      color: Colors
-                          .grey, // Replace 'Colors.grey' with the desired icon color
+                      Icons.train,
+                      color: Colors.grey,
                     ),
-                    SizedBox(
-                        width:
-                            8), // Add some spacing between the icon and the text
+                    SizedBox(width: 8),
                     Text(
                       '\nNo train schedules found\n',
                       style: TextStyle(
@@ -679,14 +693,12 @@ class _HomeScreenState extends State<HomeScreen> {
               return SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 20, // Replace with your desired vertical padding
-                    horizontal:
-                        16, // Replace with your desired horizontal padding
+                    vertical: 20,
+                    horizontal: 16,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Add content for the bottom sheet here
                       const Text(
                         'Train Schedules',
                         style: TextStyle(
@@ -698,7 +710,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       for (var schedule in trainSchedules)
                         ListTile(
                           title: Text('Arrive: ${schedule['Arrive']}'),
-                          subtitle: Text('Depart: ${schedule['Depart']}'),
+                          subtitle: Text(
+                              'Depart: ${_formatTime(schedule['Depart'])}'),
                         ),
                     ],
                   ),
@@ -916,7 +929,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding:
                                   const EdgeInsets.only(left: 10.0, top: 10.0),
                               child: Text(
-                                'Ride Safely,   Ride Comfortably, \nEnjoy the journey... ', //ttime:$travelTime path:$path destination:$selectedDestinItem
+                                'Ride Safely,   Ride Comfortably, \nEnjoy the journey... $now', //ttime:$travelTime path:$path destination:$selectedDestinItem
                                 style: GoogleFonts.blinker(
                                   textStyle: const TextStyle(
                                     fontSize: 20,
@@ -1342,6 +1355,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () {
                         // Do something when the icon is pressed
                         showPreviousOrdersDialog(context);
+                        print('$now');
                       },
                     ),
                     const Text(
