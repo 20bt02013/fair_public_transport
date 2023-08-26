@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                               borderRadius:
                                                   BorderRadius.circular(15),
                                               color: Colors
-                                                  .blue, // You can change the button color here.
+                                                  .greenAccent, // You can change the button color here.
                                             ),
                                             child: const Text(
                                               'Open Gate',
@@ -400,17 +400,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                         GestureDetector(
                                           onTap: () async {
                                             Navigator.pop(context);
-                                            // Navigate to SeatAssignmentScreen and pass the order data
-
-                                            //         passselectedLocation: selectedLocation,
-                                            //         passselectedDestination: selectedDestination,
-                                            //         passtrainDocId: nearestTrainDocId,
-                                            //         passAge: age,
-                                            //         passCategory: category,
-                                            //         passTraveltime: travelTime,
-                                            //         passPath: path),
-                                            //   ),
-                                            // );
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -439,7 +428,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                               borderRadius:
                                                   BorderRadius.circular(15),
                                               color: Colors
-                                                  .blue, // You can change the button color here.
+                                                  .lightBlueAccent, // You can change the button color here.
                                             ),
                                             child: const Text(
                                               'Seat Assign Page',
@@ -452,6 +441,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                         ),
                                         // Add the second widget here, for example, another button or text
+                                        const SizedBox(height: 5),
+                                        // Add the second widget here, for example, another button or text
+                                        GestureDetector(
+                                          onTap: () {
+                                            _showTrainSchedules(
+                                                context, location, destination);
+                                            print('$location $destination');
+                                            // Show another showModalBottomSheet for orders that are not 'Paid'
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10, horizontal: 18),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                              color: Colors
+                                                  .red, // You can change the button color here.
+                                            ),
+                                            child: const Text(
+                                              'Schedules',
+                                              style: TextStyle(
+                                                color: Colors
+                                                    .white, // You can change the text color here.
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     )
                                   else // If status is not 'Paid', show the status text

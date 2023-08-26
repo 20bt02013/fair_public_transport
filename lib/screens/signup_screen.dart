@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +8,7 @@ import '../function/reuse.dart';
 import 'dart:core';
 import 'signin_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
@@ -23,6 +25,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _ewalletController = TextEditingController();
   String _selectedCategory = '';
+
+  File? _pickedImage;
+  String? picUrl;
 
   Stream<QuerySnapshot> getItems() {
     return FirebaseFirestore.instance.collection('category').snapshots();
@@ -66,6 +71,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
         password: password,
       );
 
+      // Image upload logic
+      if (_selectedCategory == 'Pregnant') {
+        await _uploadImage(email);
+      }
+
+      // Image upload logic
+      if (_pickedImage != null) {
+        final userEmail = email; // Use the email from the text field
+
+        firebase_storage.Reference storageReference = firebase_storage
+            .FirebaseStorage.instance
+            .refFromURL('gs://fairpublictransport-zaff.appspot.com/')
+            .child('proveImages/$userEmail');
+
+        firebase_storage.UploadTask uploadTask =
+            storageReference.putFile(File(_pickedImage!.path));
+
+        await uploadTask.whenComplete(() => null);
+
+        // Get the download URL of the uploaded image
+        picUrl = await storageReference.getDownloadURL();
+      }
+
       // Step 2: Store additional user data to Firestore
       final CollectionReference usersCollection =
           FirebaseFirestore.instance.collection('users');
@@ -75,6 +103,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'category': category,
         'age': age,
         'ewallet': ewallet,
+        'imageUrl': picUrl
       });
 
       // Success message
@@ -176,6 +205,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  // Create a function to handle the image upload
+  Future<void> _uploadImage(String userEmail) async {
+    if (_pickedImage != null) {
+      firebase_storage.Reference storageReference = firebase_storage
+          .FirebaseStorage.instance
+          .refFromURL('gs://fairpublictransport-zaff.appspot.com/')
+          .child('proveImages/$userEmail');
+
+      firebase_storage.UploadTask uploadTask =
+          storageReference.putFile(File(_pickedImage!.path));
+
+      await uploadTask.whenComplete(() => null);
+
+      // Get the download URL of the uploaded image
+      String imageUrl = await storageReference.getDownloadURL();
+
+      setState(() {
+        picUrl = imageUrl;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,7 +262,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             top: MediaQuery.of(context).size.height * 0.1,
             right: MediaQuery.of(context).size.width * 0.09,
             child: Text(
-              'Fair Public\nTransport',
+              'Fair Public\nTransport\n20BT02013\'s',
               style: GoogleFonts.blinker(
                 textStyle: const TextStyle(
                   color: Color(0xff343341),
@@ -229,8 +280,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 onTap: () {
                   Navigator.pop(context);
                 },
-                child: Row(
-                  children: const [
+                child: const Row(
+                  children: [
                     IconButton(
                       icon: Icon(Icons.arrow_back_rounded),
                       onPressed: null,
@@ -252,8 +303,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Center(
             child: SingleChildScrollView(
               physics:
-                  BouncingScrollPhysics(), // Optional: Add physics for iOS-style bouncing effect
-              padding: EdgeInsets.fromLTRB(
+                  const BouncingScrollPhysics(), // Optional: Add physics for iOS-style bouncing effect
+              padding: const EdgeInsets.fromLTRB(
                   16.0, 100.0, 16.0, 16.0), // Adjust padding as needed
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,7 +385,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                             if (snapshot.connectionState ==
                                 ConnectionState.waiting) {
-                              return CircularProgressIndicator();
+                              return const CircularProgressIndicator();
                             }
 
                             final items = snapshot.data?.docs
@@ -359,11 +410,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       value: '',
                                       child: Row(
                                         children: [
-                                          Icon(
+                                          const Icon(
                                             Icons.category,
                                             color: Colors.black,
                                           ),
-                                          SizedBox(width: 10),
+                                          const SizedBox(width: 10),
                                           Text(
                                             'Enter Category',
                                             style: TextStyle(
@@ -379,30 +430,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                         return DropdownMenuItem<String>(
                                           value: value,
                                           child: Text(
-                                              value), // Show the category name here
+                                            value, // Show the category name here
+                                          ),
                                         );
                                       },
                                     ),
                                   ],
                                 ),
-                                if (_selectedCategory == 'Pregnant')
+                                if (_selectedCategory == 'Pregnant' ||
+                                    _selectedCategory == 'Handicapped (OKU)' ||
+                                    _selectedCategory == 'Senior Citizen')
                                   TextButton(
                                     onPressed: () async {
-                                      final picker = ImagePicker();
                                       final pickedImage =
-                                          await picker.pickImage(
+                                          await ImagePicker().pickImage(
                                         source: ImageSource.gallery,
                                       );
 
                                       if (pickedImage != null) {
-                                        // Handle the picked image here
-                                        // You can upload the image to your desired location
-                                        // or perform any other operations on the image
-                                        //final imagePath = pickedImage.path;
-                                        // ...
+                                        setState(() {
+                                          _pickedImage = File(pickedImage.path);
+                                        });
                                       }
                                     },
-                                    child: Text('Upload Picture of Proof'),
+                                    child: const Text(
+                                        'Provide picture of prove or IC'),
+                                  ),
+                                if (_pickedImage != null)
+                                  Image.file(
+                                    _pickedImage!,
                                   ),
                               ],
                             );

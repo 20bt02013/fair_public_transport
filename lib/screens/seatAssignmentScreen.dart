@@ -3,55 +3,13 @@
 //import 'cuba.dart';
 //import 'package:firebase_auth/firebase_auth.dart';
 //import 'dart:html';
-
-// Show an AlertDialog to the replaced passenger
-// if (removedPassenger == widget.selectedOrderId) {
-// showDialog(
-// context: context,
-// builder: (BuildContext context) {
-// return AlertDialog(
-// title: Text('Seat Reassigned'),
-// content: Text(
-// 'Sorry, please stand...\nYour seat (Seat $earliestSeatNumber) has been reassigned to a priority individual.'),
-// actions: <Widget>[
-// TextButton(
-// onPressed: () {
-// Navigator.of(context).pop();
-// },
-// child: Text('OK'),
-// ),
-// ],
-// );
-// },
-// );
-// }
-
-// if (allSeatsOccupied && !hasSamePassengerId) {
-//   showDialog(
-//     context: context,
-//     builder: (BuildContext context) {
-//       return AlertDialog(
-//         title: Text('Seat Replacement'),
-//         content: Text(
-//             'Sorry, please stand...\nYour seat (Seat $selectedSeat) has been given to a priority individual.'),
-//         actions: <Widget>[
-//           TextButton(
-//             onPressed: () {
-//               Navigator.of(context).pop();
-//             },
-//             child: Text('OK'),
-//           ),
-//         ],
-//       );
-//     },
-//   );
-// }
+//import 'package:google_fonts/google_fonts.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'dart:async';
-//import 'package:google_fonts/google_fonts.dart';
+import 'home_screen.dart';
 
 class SeatAssignmentScreen extends StatefulWidget {
   final String selectedOrderId;
@@ -84,9 +42,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   int? selectedSeat;
   bool? isSeatConfirmed;
   List<Map<String, dynamic>> allSeatInfo = []; // To store all seat info
+  List<Map<String, dynamic>> allPassengersInfo =
+      []; // To store all passengers info
   bool? allSeatsOccupied;
   late StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
       seatListener; // Add this line
+
+  late Timer _timer; // Timer instance for periodic checks
 
   @override
   void initState() {
@@ -95,6 +57,12 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     listenToSeatChanges(); // Start listening to seat changes
     createSeatsCollectionIfNotExists();
     fetchSeatInfo(widget.selectedOrderId);
+    fetchAllPassengerInfo(widget.passPath, widget.passtrainDocId);
+
+    // Start a periodic timer that checks the conditions every minute
+    _timer = Timer.periodic(Duration(minutes: 30), (Timer timer) {
+      _checkArrivalConditions();
+    });
   }
 
   void listenToSeatChanges() {
@@ -151,7 +119,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               context: context,
               builder: (BuildContext context) {
                 return AlertDialog(
-                  title: Text('Seat Reassigned'),
+                  title: const Text('Seat Reassigned'),
                   content: Text(
                       'Sorry, please stand...\nYour seat (Seat $earliestSeatNumber) has been reassigned to a priority individual.'),
                   actions: <Widget>[
@@ -189,7 +157,67 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   @override
   void dispose() {
     seatListener.cancel(); // Cancel the listener when the widget is disposed
+    _timer.cancel(); // Cancel the timer when the widget is disposed
     super.dispose();
+  }
+
+  void _checkArrivalConditions() {
+    final now = DateTime.now();
+
+    for (var passengerInfo in allPassengersInfo) {
+      final passengerId = passengerInfo['passengerId'];
+      final arriveTime = passengerInfo['arriveTime'] as DateTime?;
+
+      if (passengerId == widget.selectedOrderId &&
+          arriveTime != null &&
+          arriveTime.isAfter(now)) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Alert'),
+              content: Text('Your ride has arrived!'),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    await removePassenger(
+                        passengerId); // Remove passenger from Firestore
+                    await fetchAllPassengerInfo(
+                        widget.selectedOrderId, widget.passtrainDocId);
+                    Navigator.of(context).pop(); // Close the dialog
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) =>
+                                const HomeScreen())); // Close the SeatAssignmentScreen
+                  },
+                  child: Text('Exit'),
+                ),
+              ],
+            );
+          },
+        );
+        break; // Exit the loop after showing the dialog
+      } else {
+        print('what the heck');
+        print('$passengerId ${widget.selectedOrderId} $arriveTime $now');
+      }
+    }
+  }
+
+  Future<void> removePassenger(String passengerId) async {
+    final trainDocId = widget.passtrainDocId;
+    final path = widget.passPath;
+
+    final passengerDocRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('passengers')
+        .doc(passengerId);
+
+    await passengerDocRef.delete();
   }
 
   Future<void> fetchSeatInfo(String selectedOrderId) async {
@@ -217,11 +245,50 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         isSeatConfirmed = fetchedIsSeatConfirmed;
       });
     } else {
-      print('mak kau hijau');
+      print('fetchSeatInfo function');
       setState(() {
         selectedSeat = null;
         isSeatConfirmed = null;
       });
+    }
+  }
+
+  Future<void> fetchAllPassengerInfo(String path, String trainDocId) async {
+    final passengerCollectionRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('passengers');
+
+    final snapshot = await passengerCollectionRef.get();
+
+    if (snapshot.docs.isNotEmpty) {
+      allPassengersInfo = []; // Clear the list before populating it
+
+      snapshot.docs.forEach((doc) {
+        final passengerData = doc.data() as Map<String, dynamic>;
+        final String passengerId = doc.id; // Get the document ID
+        // final String? userId = passengerData['userId'] as String?;
+        final Timestamp? arriveTimeTimestamp =
+            passengerData['arriveTime'] as Timestamp?;
+
+        DateTime? arriveTime;
+        if (arriveTimeTimestamp != null) {
+          arriveTime = arriveTimeTimestamp.toDate();
+        }
+
+        if (arriveTime != null) {
+          allPassengersInfo.add({
+            'passengerId': passengerId,
+            // 'userId': userId,
+            'arriveTime': arriveTime,
+          });
+        }
+      });
+    } else {
+      print('No passengers found $path $trainDocId');
+      allPassengersInfo = [];
     }
   }
 
@@ -791,30 +858,68 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             child: Column(
               children: [
                 SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(5.0),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                      },
-                      child: const Row(
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.arrow_back_rounded),
-                            onPressed: null,
+                  child: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(5.0),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                          },
+                          child: const Row(
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.arrow_back_rounded),
+                                onPressed: null,
+                              ),
+                              Text(
+                                'Back',
+                                style: TextStyle(
+                                  color: Color(0xff343341),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: .5,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            'Back',
-                            style: TextStyle(
-                              color: Color(0xff343341),
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: .5,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.all(5.0),
+                        child: GestureDetector(
+                          onTap: () {
+                            // Perform the action for the second GestureDetector
+                            // Somewhere in your code where you want to use the fetched passenger information
+                            print('All Passengers Info:');
+                            for (var passengerInfo in allPassengersInfo) {
+                              final passengerId = passengerInfo['passengerId'];
+                              final arriveTime = passengerInfo['arriveTime'];
+
+                              print('Passenger ID: $passengerId');
+                              print('Arrive Time: $arriveTime\n');
+                            }
+                          },
+                          child: const Row(
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.accessibility),
+                                onPressed: null,
+                              ),
+                              Text(
+                                'Test',
+                                style: TextStyle(
+                                  color: Color(0xff343341),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: .5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Center(
@@ -920,7 +1025,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                                         ConnectionState
                                                             .waiting) {
                                                       // Future is still loading, return a placeholder or loading indicator
-                                                      return CircularProgressIndicator(); // You can replace this with your loading widget
+                                                      return const CircularProgressIndicator(); // You can replace this with your loading widget
                                                     } else if (snapshot
                                                         .hasError) {
                                                       // Future has encountered an error, handle it here
@@ -1000,6 +1105,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(height: 40),
                                   ],
                                 ),
                               ],
