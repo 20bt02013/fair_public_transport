@@ -72,7 +72,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       // Image upload logic
-      if (_selectedCategory == 'Pregnant') {
+      if (_selectedCategory == 'Pregnant' ||
+          _selectedCategory == 'Handicapped (OKU)' ||
+          _selectedCategory == 'Senior Citizen') {
         await _uploadImage(email);
       }
 
@@ -107,6 +109,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       });
 
       // Success message
+      // ignore: use_build_context_synchronously
       showDialog(
         context: context,
         builder: (context) => AlertDialog(

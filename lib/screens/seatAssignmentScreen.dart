@@ -170,7 +170,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
       if (passengerId == widget.selectedOrderId &&
           arriveTime != null &&
-          arriveTime.isAfter(now)) {
+          now.isAfter(arriveTime)) {
         showDialog(
           context: context,
           builder: (BuildContext context) {

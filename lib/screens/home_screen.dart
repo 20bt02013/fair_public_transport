@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fairpublictransport/screens/edit_screen.dart';
 import 'package:fairpublictransport/screens/seatAssignmentScreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../function/reuse.dart';
 import 'signin_screen.dart';
 import 'package:intl/intl.dart';
 import 'dart:core';
+import 'package:flutter/services.dart'; // For Clipboard and ClipboardData
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -110,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
           path = newPath;
         });
 
+        // ignore: use_build_context_synchronously
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -763,6 +766,198 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void showProfileDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      ),
+      builder: (context) {
+        return GestureDetector(
+          onTap: () {}, // Empty onTap function to absorb taps
+          onLongPress: () {}, // Empty onTap function to absorb long press
+          child: SingleChildScrollView(
+            child: FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                  .get(),
+              builder: (BuildContext context,
+                  AsyncSnapshot<DocumentSnapshot> snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  return const Center(child: Text('User data not found.'));
+                }
+
+                final userData = snapshot.data!.data() as Map<String, dynamic>;
+                final String name = userData['name'] as String? ?? 'No Name';
+                final String email = userData['email'] as String? ?? 'No Email';
+                final String category =
+                    userData['category'] as String? ?? 'No Category';
+                final int age = userData['age'] as int? ?? 0;
+                final int ewallet = userData['ewallet'] as int? ?? 0;
+                final String imageUrl =
+                    userData['imageUrl'] as String? ?? 'No imageUrl';
+                // Add more fields as needed
+
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'User Profile',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                            },
+                            child: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Username:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(name, style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Email:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(email, style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Category:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(category, style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Age:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(age.toString(),
+                          style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'E-wallet:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(ewallet.toString(),
+                          style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Category picture of prove:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: imageUrl));
+                          TopOverlay.showMessage(
+                              context, 'URL copied to clipboard');
+                        },
+                        child: Text(
+                          '$imageUrl',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.blue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundImage: NetworkImage(imageUrl),
+                        backgroundColor: Colors.grey[300],
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ProfileEditScreen(
+                                    name: name, // Pass the user's name
+                                    age: age,
+                                    ewallet: ewallet, // Pass the user's age
+                                    category:
+                                        category, // Pass the user's category
+                                    email: email, // Pass the user's email
+                                  ),
+                                ),
+                              );
+                            },
+                            child: const Row(
+                              children: [
+                                Icon(Icons.edit),
+                                SizedBox(
+                                    width:
+                                        10), // Add a small space between the icon and text
+                                Text(
+                                  'Edit',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1383,11 +1578,86 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.account_circle_rounded),
+                      onPressed: () {
+                        // Do something when the icon is pressed
+                        showProfileDialog(context);
+                      },
+                    ),
+                    const Text(
+                      'Profile', // Add the ewallet value after 'RM'
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class TopOverlay {
+  static void showMessage(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+
+    final overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                child: Container(
+                  color: Colors.black.withOpacity(
+                      0.5), // Semi-transparent black color for the background
+                ),
+              ),
+            ),
+            Positioned(
+              top: 300,
+              left: 0,
+              right: 0,
+              child: AnimatedOpacity(
+                opacity: 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  height: 50, // Adjust the height as needed
+                  color: Colors
+                      .transparent, // Set the background color to transparent
+                  padding: const EdgeInsets.all(8.0),
+                  child: Center(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    overlay.insert(overlayEntry);
+
+    Future.delayed(const Duration(seconds: 2), () {
+      overlayEntry.markNeedsBuild(); // Trigger a rebuild with opacity animation
+      Future.delayed(const Duration(milliseconds: 300), () {
+        overlayEntry.remove();
+      });
+    });
   }
 }
