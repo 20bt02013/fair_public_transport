@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1002523791884",
+    "firebase_url": "https://fairpublictransport-zaff-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "fairpublictransport-zaff",
+    "storage_bucket": "fairpublictransport-zaff.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1002523791884:android:8270dcf97d5355d5bc1429",
+        "android_client_info": {
+          "package_name": "com.fairpublictransport.fairpublictransport"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1002523791884-ur7u2e84ufds3jad6vh89ichgkqapd4o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fairpublictransport.fairpublictransport",
+            "certificate_hash": "0484cb440f28cd5f25215d314a04d278cc4cad1e"
+          }
+        },
+        {
+          "client_id": "1002523791884-n2njmfq21ke651mif4n251dcph14jq3e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuVm7-RT3E1UeFE93ISs-FVKR94Gd8kmE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1002523791884-n2njmfq21ke651mif4n251dcph14jq3e.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1002523791884-mbl0ksu1qoi66ce715ehlpknre3f1ubc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.fairpublictransport.fairpublictransport"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
