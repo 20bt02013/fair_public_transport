@@ -643,7 +643,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Text(
-                'Train has already departed',
+                'Train has already departed, No more available train for today',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
@@ -918,13 +918,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => ProfileEditScreen(
-                                    name: name, // Pass the user's name
-                                    age: age,
-                                    ewallet: ewallet, // Pass the user's age
-                                    category:
-                                        category, // Pass the user's category
-                                    email: email, // Pass the user's email
-                                  ),
+                                      name: name, // Pass the user's name
+                                      age: age,
+                                      ewallet: ewallet, // Pass the user's age
+                                      category:
+                                          category, // Pass the user's category
+                                      email: email,
+                                      imageUrl:
+                                          imageUrl // Pass the user's email
+                                      ),
                                 ),
                               );
                             },

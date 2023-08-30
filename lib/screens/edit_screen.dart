@@ -3,11 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:image_picker/image_picker.dart';
-
 import 'dart:io';
-
 import 'dart:core';
-
 import 'home_screen.dart';
 
 class ProfileEditScreen extends StatefulWidget {
@@ -16,6 +13,7 @@ class ProfileEditScreen extends StatefulWidget {
   final int ewallet;
   final String category;
   final String email;
+  final String imageUrl;
 
   const ProfileEditScreen({
     super.key,
@@ -24,6 +22,7 @@ class ProfileEditScreen extends StatefulWidget {
     required this.ewallet,
     required this.category,
     required this.email,
+    required this.imageUrl,
   });
   @override
   _ProfileEditScreenState createState() => _ProfileEditScreenState();
@@ -36,10 +35,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String updatedCategory = '';
   File? updatedImage;
   String updatedEmail = '';
-
-  //String? updatedCategory;
-  //  File? _pickedImage;
-  String? picUrl;
+  String updatedImageUrl = '';
 
   @override
   void initState() {
@@ -49,6 +45,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     updatedAge = widget.age;
     updatedEwallet = widget.ewallet;
     updatedCategory = widget.category;
+    updatedImageUrl = widget.imageUrl;
   }
 
   final TextEditingController _newEmailController = TextEditingController();
@@ -235,28 +232,36 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                             // Add other fields to update here
                           });
 
-                          await _uploadImage(
-                              _newEmailController.text, updatedImage);
-
+                          if (updatedImage != null) {
+                            await _uploadImage(
+                                _newEmailController.text, updatedImage);
+                          }
                           print(
                               'Email updated successfully in Firebase Authentication');
                         } catch (error) {
                           print(
                               'Error updating email in Firebase Authentication: $error');
                         }
+                      } else {
+                        try {
+                          if (updatedImage != null) {
+                            await _uploadImage(widget.email, updatedImage);
+                          }
+                        } catch (error) {
+                          print('Error updating image in Firebase: $error');
+                        }
                       }
+
                       if (_newPasswordController.text.isNotEmpty) {
                         try {
                           final user = FirebaseAuth.instance.currentUser;
                           if (user != null) {
                             final authCredential = EmailAuthProvider.credential(
                               email: user.email!,
-                              password: _currentPasswordController
-                                  .text, // Use .text to get the value from the controller
+                              password: _currentPasswordController.text,
                             );
                             await user
                                 .reauthenticateWithCredential(authCredential);
-
                             await user
                                 .updatePassword(_newPasswordController.text);
                           }
@@ -273,7 +278,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         'age': updatedAge,
                         'ewallet': updatedEwallet,
                         'category': updatedCategory,
-                        'imageUrl': picUrl
+                        'imageUrl': updatedImage != null
+                            ? updatedImageUrl
+                            : widget.imageUrl,
                         // Add other fields to update here
                       });
 
@@ -313,8 +320,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       final imageUrl = await storageReference.getDownloadURL();
 
       setState(() {
-        picUrl = imageUrl;
+        updatedImageUrl = imageUrl;
       });
+    } else {
+      print('No Image Selected');
     }
   }
 }

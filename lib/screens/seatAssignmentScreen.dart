@@ -6,6 +6,7 @@
 //import 'package:google_fonts/google_fonts.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -60,7 +61,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     fetchAllPassengerInfo(widget.passPath, widget.passtrainDocId);
 
     // Start a periodic timer that checks the conditions every minute
-    _timer = Timer.periodic(Duration(minutes: 30), (Timer timer) {
+    _timer = Timer.periodic(Duration(seconds: 10), (Timer timer) {
       _checkArrivalConditions();
     });
   }
@@ -184,7 +185,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                         passengerId); // Remove passenger from Firestore
                     await fetchAllPassengerInfo(
                         widget.selectedOrderId, widget.passtrainDocId);
+                    // ignore: use_build_context_synchronously
                     Navigator.of(context).pop(); // Close the dialog
+                    // ignore: use_build_context_synchronously
                     Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -200,7 +203,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         break; // Exit the loop after showing the dialog
       } else {
         print('what the heck');
-        print('$passengerId ${widget.selectedOrderId} $arriveTime $now');
+        print(
+            'PassId:$passengerId OrderID:${widget.selectedOrderId} AT:$arriveTime Now:$now');
       }
     }
   }
@@ -218,6 +222,43 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         .doc(passengerId);
 
     await passengerDocRef.delete();
+
+    final seatsCollectionRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('Seats');
+
+    final seatsQuerySnapshot = await seatsCollectionRef
+        .where('passengerId', isEqualTo: widget.selectedOrderId)
+        .get();
+
+    if (seatsQuerySnapshot.docs.isNotEmpty) {
+      final seatDocRef = seatsQuerySnapshot.docs[0].reference;
+
+      // Update the seat document
+      await seatDocRef.update({
+        'seatNumber': selectedSeat,
+        'passengerId': 'Not occupied',
+        'isSelected': false,
+        'isSeatConfirmed': false,
+        'timeConfirm': null,
+        'category': 'Unknown',
+        'replacement': null,
+      });
+    }
+
+    // Update the order status to 'Finished'
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser!.uid)
+        .collection('orders')
+        .doc(widget
+            .selectedOrderId) // Assuming widget.selectedOrderId is the order's ID
+        .update({
+      'status': 'Finished',
+    });
   }
 
   Future<void> fetchSeatInfo(String selectedOrderId) async {
