@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
-TextField reuseTextField(String text, IconData icon, bool isPasswordType,
-    TextEditingController controller) {
+TextField reuseTextField(
+  String text,
+  IconData icon,
+  bool isPasswordType,
+  TextEditingController controller,
+  bool obscureText, // Pass the obscureText variable
+  Function
+      togglePasswordVisibility, // Pass the togglePasswordVisibility callback
+) {
   return TextField(
     controller: controller,
-    obscureText: isPasswordType,
+    obscureText:
+        isPasswordType ? obscureText : false, // Use the 'obscureText' variable
     enableSuggestions: !isPasswordType,
     autocorrect: isPasswordType,
     cursorColor: Colors.black,
@@ -21,12 +29,53 @@ TextField reuseTextField(String text, IconData icon, bool isPasswordType,
         color: Colors.black.withOpacity(0.9),
       ),
       filled: false,
+      // Add a suffix icon button to toggle password visibility
+      suffixIcon: isPasswordType
+          ? IconButton(
+              icon: Icon(
+                obscureText ? Icons.visibility : Icons.visibility_off,
+                color: Colors.black,
+              ),
+              onPressed: () {
+                // Call the callback to toggle password visibility
+                togglePasswordVisibility();
+              },
+            )
+          : null, // No suffix icon for non-password fields
     ),
     keyboardType: isPasswordType
         ? TextInputType.visiblePassword
         : TextInputType.emailAddress,
   );
 }
+
+// TextField reuseTextField(String text, IconData icon, bool isPasswordType,
+//     TextEditingController controller) {
+//   return TextField(
+//     controller: controller,
+//     obscureText: isPasswordType,
+//     enableSuggestions: !isPasswordType,
+//     autocorrect: isPasswordType,
+//     cursorColor: Colors.black,
+//     style: TextStyle(
+//       color: Colors.black.withOpacity(0.9),
+//     ),
+//     decoration: InputDecoration(
+//       prefixIcon: Icon(
+//         icon,
+//         color: Colors.black,
+//       ),
+//       labelText: text,
+//       labelStyle: TextStyle(
+//         color: Colors.black.withOpacity(0.9),
+//       ),
+//       filled: false,
+//     ),
+//     keyboardType: isPasswordType
+//         ? TextInputType.visiblePassword
+//         : TextInputType.emailAddress,
+//   );
+// }
 
 TextField reuseInfoTextField(String text, IconData icon, bool isPasswordType,
     TextEditingController controller) {

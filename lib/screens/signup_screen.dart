@@ -29,6 +29,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   File? _pickedImage;
   String? picUrl;
 
+  bool obscureText = true; // Initial state, password is obscured
+
+  void togglePasswordVisibility() {
+    setState(() {
+      obscureText = !obscureText;
+    });
+  }
+
   Stream<QuerySnapshot> getItems() {
     return FirebaseFirestore.instance.collection('category').snapshots();
   }
@@ -72,8 +80,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       // Image upload logic
-      if (_selectedCategory == 'Pregnant' ||
-          _selectedCategory == 'Handicapped (OKU)' ||
+      if (_selectedCategory == 'Handicapped (OKU)' ||
           _selectedCategory == 'Senior Citizen') {
         await _uploadImage(email);
       }
@@ -369,6 +376,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           Icons.email,
                           false,
                           _emailController,
+                          obscureText,
+                          togglePasswordVisibility,
                         ),
                         const SizedBox(height: 20),
                         reuseTextField(
@@ -376,6 +385,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           Icons.lock_open_outlined,
                           true,
                           _passwordController,
+                          obscureText,
+                          togglePasswordVisibility,
                         ),
                         const SizedBox(height: 20),
                         StreamBuilder<QuerySnapshot>(
@@ -440,8 +451,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     ),
                                   ],
                                 ),
-                                if (_selectedCategory == 'Pregnant' ||
-                                    _selectedCategory == 'Handicapped (OKU)' ||
+                                if (_selectedCategory == 'Handicapped (OKU)' ||
                                     _selectedCategory == 'Senior Citizen')
                                   TextButton(
                                     onPressed: () async {
@@ -473,6 +483,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           Icons.accessibility_new_sharp,
                           false,
                           _ageController,
+                          obscureText,
+                          togglePasswordVisibility,
                         ),
                         const SizedBox(height: 20),
                         reuseTextField(
@@ -480,6 +492,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           Icons.wallet,
                           false,
                           _ewalletController,
+                          obscureText,
+                          togglePasswordVisibility,
                         ),
                         const SizedBox(height: 20),
                         logInSignUpBtn(

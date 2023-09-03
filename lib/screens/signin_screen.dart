@@ -5,8 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fairpublictransport/function/reuse.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
-import 'fs_examplescreen.dart';
-//import 'test_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({Key? key}) : super(key: key);
@@ -17,6 +15,15 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController _passwordTextController = TextEditingController();
   final TextEditingController _emailTextController = TextEditingController();
+
+  bool obscureText = true; // Initial state, password is obscured
+
+  void togglePasswordVisibility() {
+    setState(() {
+      obscureText = !obscureText;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -44,27 +51,27 @@ class _SignInScreenState extends State<SignInScreen> {
             child: IconButton(
               icon: const Icon(Icons.nfc),
               onPressed: () {
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const SignUpScreenExample()));
                 // Do something when the icon is pressed
               },
             ),
           ),
           Positioned(
-            top: MediaQuery.of(context).size.height * 0.07,
-            left: MediaQuery.of(context).size.width * 0.5 - 24,
-            child: IconButton(
-              icon: const Icon(Icons.accessible),
-              onPressed: () {
-                // Navigator.push(
-                //     context,
-                //     MaterialPageRoute(
-                //         builder: (context) => const SeatAssignmentScreen()));
-                // Do something when the icon is pressed
-              },
-            ),
+            top: MediaQuery.of(context).size.height * 0.08,
+            left: MediaQuery.of(context).size.width * 0.4 - 24,
+            child: Row(children: [
+              IconButton(
+                icon: const Icon(Icons.accessible),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: const Icon(Icons.pregnant_woman_rounded),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: const Icon(Icons.accessibility_new_outlined),
+                onPressed: () {},
+              ),
+            ]),
           ),
           Positioned(
             top: MediaQuery.of(context).size.height * 0.09,
@@ -135,14 +142,23 @@ class _SignInScreenState extends State<SignInScreen> {
                             ),
                           ),
                           const SizedBox(height: 90),
-                          reuseTextField('Enter Email Address', Icons.person,
-                              false, _emailTextController),
+                          reuseTextField(
+                            'Enter Email Address',
+                            Icons.person,
+                            false,
+                            _emailTextController,
+                            obscureText,
+                            togglePasswordVisibility,
+                          ),
                           const SizedBox(height: 20),
                           reuseTextField(
-                              'Enter Password',
-                              Icons.lock_open_outlined,
-                              true,
-                              _passwordTextController),
+                            'Enter Password',
+                            Icons.lock_open_outlined,
+                            true,
+                            _passwordTextController,
+                            obscureText,
+                            togglePasswordVisibility,
+                          ),
                           const SizedBox(height: 30),
                           logInSignUpBtn(context, true, () {
                             FirebaseAuth.instance

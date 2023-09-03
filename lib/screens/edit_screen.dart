@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:core';
 import 'home_screen.dart';
+import 'package:intl/intl.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   final String name;
@@ -36,6 +37,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   File? updatedImage;
   String updatedEmail = '';
   String updatedImageUrl = '';
+  final tempCategory = 'Health Issues (Prenant, Fever, etc..)';
+
+  DateTime? startDate;
+  DateTime? endDate;
 
   @override
   void initState() {
@@ -122,13 +127,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     decoration: const InputDecoration(labelText: 'E-wallet'),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'Category:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
                   StreamBuilder<QuerySnapshot>(
                     stream: getCategItems(),
                     builder: (BuildContext context,
@@ -146,75 +144,170 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                               .toList() ??
                           [];
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          DropdownButton<String>(
-                            value: updatedCategory,
-                            onChanged: (String? newValue) {
-                              if (newValue != null) {
-                                setState(() {
-                                  updatedCategory = newValue;
-                                  print(updatedCategory);
-                                });
-                              }
-                            },
-                            items: [
-                              DropdownMenuItem<String>(
-                                value: '',
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.category,
-                                      color: Colors.black,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Enter Category',
-                                      style: TextStyle(
-                                        color: Colors.black.withOpacity(0.9),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                      if (widget.category == 'Handicapped (OKU)' ||
+                          widget.category == 'Senior Citizen') {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Category:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              ...items.map<DropdownMenuItem<String>>(
-                                (String value) {
-                                  return DropdownMenuItem<String>(
-                                    value: value,
-                                    child: Text(
-                                      value, // Show the category name here
-                                    ),
-                                  );
-                                },
+                            ),
+                            Text(widget.category,
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(height: 10),
+                            // ... (existing code)
+                          ],
+                        );
+                      } else {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Category:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                            ],
-                          ),
-                          if (updatedCategory == 'Pregnant' ||
-                              updatedCategory == 'Handicapped (OKU)' ||
-                              updatedCategory == 'Senior Citizen')
-                            TextButton(
-                              onPressed: () async {
-                                final pickedImage =
-                                    await ImagePicker().pickImage(
-                                  source: ImageSource.gallery,
-                                );
-
-                                if (pickedImage != null) {
+                            ),
+                            DropdownButton<String>(
+                              value: updatedCategory,
+                              onChanged: (String? newValue) {
+                                if (newValue != null) {
                                   setState(() {
-                                    updatedImage = File(pickedImage.path);
+                                    updatedCategory = newValue;
+                                    print(updatedCategory);
                                   });
                                 }
                               },
-                              child:
-                                  const Text('Provide picture of prove or IC'),
+                              items: [
+                                DropdownMenuItem<String>(
+                                  value: '',
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.category,
+                                        color: Colors.black,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        'Enter Category',
+                                        style: TextStyle(
+                                          color: Colors.black.withOpacity(0.9),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ...items.map<DropdownMenuItem<String>>(
+                                  (String value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(
+                                        value, // Show the category name here
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
-                          if (updatedImage != null)
-                            Image.file(
-                              updatedImage!,
-                            ),
-                        ],
-                      );
+                            if (updatedCategory == 'Handicapped (OKU)' ||
+                                updatedCategory == 'Senior Citizen')
+                              TextButton(
+                                onPressed: () async {
+                                  final pickedImage =
+                                      await ImagePicker().pickImage(
+                                    source: ImageSource.gallery,
+                                  );
+
+                                  if (pickedImage != null) {
+                                    setState(() {
+                                      updatedImage = File(pickedImage.path);
+                                    });
+                                  }
+                                },
+                                child: const Text(
+                                    'Provide picture of prove or IC'),
+                              ),
+                            if (updatedCategory ==
+                                'Health Issues (Prenant, Fever, etc..)')
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextFormField(
+                                    readOnly: true,
+                                    onTap: () async {
+                                      final selectedDate = await showDatePicker(
+                                        context: context,
+                                        initialDate:
+                                            startDate ?? DateTime.now(),
+                                        firstDate: DateTime(2000),
+                                        lastDate: DateTime(2101),
+                                      );
+                                      if (selectedDate != null) {
+                                        setState(() {
+                                          startDate = selectedDate;
+                                        });
+                                      }
+                                    },
+                                    decoration: const InputDecoration(
+                                        labelText: 'Start Date'),
+                                    initialValue: startDate != null
+                                        ? DateFormat('dd-MM-yyyy')
+                                            .format(startDate!)
+                                        : '',
+                                  ),
+                                  TextFormField(
+                                    readOnly: true,
+                                    onTap: () async {
+                                      final selectedDate = await showDatePicker(
+                                        context: context,
+                                        initialDate: endDate ?? DateTime.now(),
+                                        firstDate: DateTime(2000),
+                                        lastDate: DateTime(2101),
+                                      );
+                                      if (selectedDate != null) {
+                                        setState(() {
+                                          endDate = selectedDate;
+                                        });
+                                      }
+                                    },
+                                    decoration: const InputDecoration(
+                                        labelText: 'End Date'),
+                                    initialValue: endDate != null
+                                        ? DateFormat('dd-MM-yyyy')
+                                            .format(endDate!)
+                                        : '',
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      final pickedImage =
+                                          await ImagePicker().pickImage(
+                                        source: ImageSource.gallery,
+                                      );
+
+                                      if (pickedImage != null) {
+                                        setState(() {
+                                          updatedImage = File(pickedImage.path);
+                                        });
+                                      }
+                                    },
+                                    child: const Text(
+                                        'Provide picture of proof or IC'),
+                                  ),
+                                ],
+                              ),
+                            if (updatedImage != null)
+                              Image.file(
+                                updatedImage!,
+                              ),
+                            // ... (existing code)
+                          ],
+                        );
+                      }
                     },
                   ),
                   ElevatedButton(
@@ -281,6 +374,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         'imageUrl': updatedImage != null
                             ? updatedImageUrl
                             : widget.imageUrl,
+                        'startHealth': startDate,
+                        'endHealth': endDate,
+                        if (updatedCategory == tempCategory)
+                          'beforeTempCategory': widget.category,
                         // Add other fields to update here
                       });
 
@@ -304,7 +401,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   Stream<QuerySnapshot> getCategItems() {
-    return FirebaseFirestore.instance.collection('category').snapshots();
+    return FirebaseFirestore.instance.collection('editCategory').snapshots();
   }
 
   Future<void> _uploadImage(String userEmail, File? image) async {

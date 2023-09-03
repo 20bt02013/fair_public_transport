@@ -49,7 +49,12 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   late StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
       seatListener; // Add this line
 
+  DateTime? arriveTime;
+
   late Timer _timer; // Timer instance for periodic checks
+
+  int? passSeatTry;
+  DateTime? passTimeTry;
 
   @override
   void initState() {
@@ -59,9 +64,10 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     createSeatsCollectionIfNotExists();
     fetchSeatInfo(widget.selectedOrderId);
     fetchAllPassengerInfo(widget.passPath, widget.passtrainDocId);
+    fetchUserArriveTime(widget.selectedOrderId);
 
     // Start a periodic timer that checks the conditions every minute
-    _timer = Timer.periodic(Duration(seconds: 10), (Timer timer) {
+    _timer = Timer.periodic(const Duration(hours: 10), (Timer timer) {
       _checkArrivalConditions();
     });
   }
@@ -87,6 +93,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'timeConfirm': doc['timeConfirm'],
             'category': doc['category'],
             'replacement': doc['replacement'],
+            'arriveTime': doc['arriveTime'],
+            'waitingPassenger': doc['waitingPassenger']
           };
         }).toList();
 
@@ -167,17 +175,17 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
     for (var passengerInfo in allPassengersInfo) {
       final passengerId = passengerInfo['passengerId'];
-      final arriveTime = passengerInfo['arriveTime'] as DateTime?;
+      final getArriveTime = passengerInfo['arriveTime'] as DateTime?;
 
       if (passengerId == widget.selectedOrderId &&
-          arriveTime != null &&
-          now.isAfter(arriveTime)) {
+          getArriveTime != null &&
+          now.isAfter(getArriveTime)) {
         showDialog(
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: Text('Alert'),
-              content: Text('Your ride has arrived!'),
+              title: const Text('Alert'),
+              content: const Text('Your ride has arrived!'),
               actions: [
                 TextButton(
                   onPressed: () async {
@@ -194,7 +202,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                             builder: (context) =>
                                 const HomeScreen())); // Close the SeatAssignmentScreen
                   },
-                  child: Text('Exit'),
+                  child: const Text('Exit'),
                 ),
               ],
             );
@@ -204,7 +212,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
       } else {
         print('what the heck');
         print(
-            'PassId:$passengerId OrderID:${widget.selectedOrderId} AT:$arriveTime Now:$now');
+            'OtherPassId:$passengerId CUrrent user ID:${widget.selectedOrderId} AT:$getArriveTime Now:$now');
       }
     }
   }
@@ -246,6 +254,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         'timeConfirm': null,
         'category': 'Unknown',
         'replacement': null,
+        'arriveTime': null,
       });
     }
 
@@ -259,6 +268,44 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         .update({
       'status': 'Finished',
     });
+  }
+
+  Future<void> fetchUserArriveTime(selectedOrderId) async {
+    final path = widget.passPath;
+    final trainDocId = widget.passtrainDocId;
+
+    final passengerDocRef = FirebaseFirestore.instance
+        .collection('paths')
+        .doc(path)
+        .collection('Trains')
+        .doc(trainDocId)
+        .collection('passengers')
+        .doc(selectedOrderId);
+
+    final snapshot = await passengerDocRef.get();
+
+    if (snapshot.exists) {
+      // Check if the document exists
+      final passengerInfo = snapshot.data() as Map<String, dynamic>;
+
+      final Timestamp? fetchedArriveTimeTimestamp =
+          passengerInfo['arriveTime'] as Timestamp?;
+
+      DateTime? fetchedArriveTime;
+
+      if (fetchedArriveTimeTimestamp != null) {
+        fetchedArriveTime = fetchedArriveTimeTimestamp.toDate();
+      }
+
+      setState(() {
+        arriveTime = fetchedArriveTime;
+      });
+    } else {
+      setState(() {
+        arriveTime = null;
+      });
+      print('fetchPassengerArrive $arriveTime');
+    }
   }
 
   Future<void> fetchSeatInfo(String selectedOrderId) async {
@@ -365,6 +412,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               'timeConfirm': null,
               'category': 'Unknown',
               'replacement': null,
+              'arriveTime': null,
+              'waitingPassenger': null
             },
           );
         }
@@ -480,6 +529,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               'isSeatConfirmed': false,
               'timeConfirm': null,
               'category': 'Unknown',
+              'arriveTime': null
             },
             SetOptions(merge: true),
           );
@@ -503,6 +553,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                 false, // Always set to false when selecting a seat,
             'timeConfirm': null,
             'category': 'Unknown',
+            'arriveTime': null
           },
           SetOptions(merge: true),
         );
@@ -556,6 +607,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'isSeatConfirmed': false,
             'timeConfirm': null,
             'category': 'Unknown',
+            'arriveTime': null
           },
         );
 
@@ -588,16 +640,17 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
     final bool hasSamePassengerId = allSeatInfo
         .any((seatInfo) => seatInfo['passengerId'] == widget.selectedOrderId);
+    final bool hasSameWaitingPassenger = allSeatInfo.any(
+        (seatInfo) => seatInfo['waitingPassenger'] == widget.selectedOrderId);
 
     print('allSeatsOccupied: $allSeatsOccupied');
 
     if (!isConfirmed) {
       if (allSeatsOccupied &&
           !hasSamePassengerId &&
-          (category == "Pregnant" ||
+          (category == "Health Issues (Prenant, Fever, etc..)" ||
               category == "Handicapped (OKU)" ||
-              category == "Senior Citizen" ||
-              category == "Health Issue")) {
+              category == "Senior Citizen")) {
         // Find the earliest timeConfirm among all seats
         DateTime earliestTimeConfirm = DateTime.now();
         int? earliestSeatNumber;
@@ -609,10 +662,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           final String seatCategory = seatInfo['category'];
           final passengerRemoved = seatInfo['passengerId'];
 
-          if ((seatCategory != "Pregnant" &&
-                  seatCategory != "Handicapped (OKU)" &&
+          if ((seatCategory != "Handicapped (OKU)" &&
                   seatCategory != "Senior Citizen" &&
-                  seatCategory != "Health Issue") &&
+                  seatCategory != "Health Issues (Prenant, Fever, etc..)") &&
               timeConfirm != null &&
               timeConfirm.isBefore(earliestTimeConfirm)) {
             earliestTimeConfirm = timeConfirm;
@@ -637,6 +689,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'timeConfirm': DateTime.now(),
             'category': widget.passCategory,
             'replacement': removedPassenger,
+            'arriveTime': arriveTime
           });
 
           // Update local state and other necessary operations
@@ -656,7 +709,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           child: Column(
             children: [
               Text(
-                "$earliestSeatNumber $category",
+                "Is this necessary?? $earliestSeatNumber $category",
                 style: const TextStyle(
                     color: Colors.red, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
@@ -670,16 +723,64 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             ],
           ),
         );
-      } else if (!allSeatsOccupied &&
-          (category == "Pregnant" ||
-              category == "Handicapped (OKU)" ||
-              category == "Senior Citizen" ||
-              category == "Health Issue")) {
-        return ElevatedButton(
-          onPressed: selectedSeat != null ? confirmSeat : null,
-          child: const Text("Confirm Seat"),
-        );
-      } else if (allSeatsOccupied) {
+      } else if (allSeatsOccupied &&
+          !hasSamePassengerId &&
+          !hasSameWaitingPassenger) {
+        // Find the earliest timeConfirm among all seats
+        DateTime earliestArrivedSeat = DateTime.now();
+        int? earliestArriveSeatNumber;
+        //String? removedPassenger;
+
+        // Find the earliest arrived seat among occupied seats
+        for (final seatInfo in allSeatInfo) {
+          final DateTime? seatedArriveTime = seatInfo['arriveTime']?.toDate();
+          final String seatCategory = seatInfo['category'];
+          //final passengerRemoved = seatInfo['passengerId'];
+          final waitingPassenger = seatInfo['waitingPassenger'];
+
+          if ((seatCategory != "Handicapped (OKU)" &&
+                  seatCategory != "Senior Citizen" &&
+                  seatCategory != "Health Issues (Prenant, Fever, etc..)") &&
+              seatedArriveTime != null &&
+              waitingPassenger == null &&
+              seatedArriveTime.isAfter(earliestArrivedSeat)) {
+            earliestArrivedSeat = seatedArriveTime;
+            earliestArriveSeatNumber = seatInfo['seatNumber'];
+            //removedPassenger = passengerRemoved;
+            print(
+                'working seat: $earliestArriveSeatNumber Time: $earliestArrivedSeat');
+          }
+        }
+
+        if (earliestArriveSeatNumber != null) {
+          // Update the earliest seat's passengerId with widget.selectedOrderId
+          FirebaseFirestore.instance
+              .collection('paths')
+              .doc(path)
+              .collection('Trains')
+              .doc(widget.passtrainDocId)
+              .collection('Seats')
+              .doc(earliestArriveSeatNumber.toString())
+              .collection('waitingPassenger')
+              .doc(widget.selectedOrderId)
+              .set({
+            'passengerId': widget.selectedOrderId,
+            'category': widget.passCategory,
+            'arriveTime': arriveTime,
+            'timeAssign': earliestArrivedSeat
+          });
+
+          FirebaseFirestore.instance
+              .collection('paths')
+              .doc(path)
+              .collection('Trains')
+              .doc(widget.passtrainDocId)
+              .collection('Seats')
+              .doc(earliestArriveSeatNumber.toString())
+              .update({'waitingPassenger': widget.selectedOrderId});
+
+          print('checking');
+        }
         return Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.red, width: 2),
@@ -687,10 +788,31 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             color: Colors.white60,
           ),
           padding: const EdgeInsets.all(8),
-          child: const Text(
-            "Sorry all seat is occupied",
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          child: Text(
+            "Sorry all seat is occupied, Please wait for your seat number: $earliestArriveSeatNumber Time: $earliestArrivedSeat",
+            style:
+                const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
           ),
+        );
+      } else if (hasSameWaitingPassenger) {
+        int? getSeatNumber;
+        DateTime? getTimeAssign;
+
+        for (final seatInfo in allSeatInfo) {
+          final waitingPassenger = seatInfo['waitingPassenger'];
+          final seatNumber = seatInfo['seatNumber'];
+          final Timestamp assignTime = seatInfo['arriveTime'];
+
+          if (waitingPassenger == widget.selectedOrderId) {
+            getSeatNumber = seatNumber;
+            getTimeAssign = assignTime.toDate();
+          }
+        }
+
+        return ElevatedButton(
+          onPressed: selectedSeat != null ? confirmSeat : null,
+          child: Text(
+              "hasSameWaitingPassenger Sorry all seat is occupied, Please wait for your seat: $getSeatNumber Time: $getTimeAssign"),
         );
       } else {
         return ElevatedButton(
@@ -783,6 +905,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               'isSeatConfirmed': false,
               'timeConfirm': null,
               'category': 'Unknown',
+              'arriveTime': 'Unknown',
+              //'arriveTime': null
             },
             SetOptions(merge: true),
           );
@@ -808,6 +932,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'isSeatConfirmed': true,
             'timeConfirm': now,
             'category': widget.passCategory,
+            'arriveTime': arriveTime
           },
           SetOptions(merge: true),
         );
@@ -997,7 +1122,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                           left: 15.0, top: 20.0),
                                       child: Text(
                                         'Choose your seat.. $isSeatConfirmed \n ${widget.selectedOrderId} \n $selectedSeat ${widget.passCategory}   '
-                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation}',
+                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation} $arriveTime ',
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold),
@@ -1177,6 +1302,7 @@ class SeatButton extends StatelessWidget {
   final Function(int, bool) onSeatButtonPressed;
 
   const SeatButton({
+    super.key,
     required this.seatNumber,
     required this.isSelected,
     required this.isSeatConfirmed,

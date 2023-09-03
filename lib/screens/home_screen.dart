@@ -36,6 +36,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   DateTime now = DateTime.now();
 
+  bool obscureText = true; // Initial state, password is obscured
+
+  void togglePasswordVisibility() {
+    setState(() {
+      obscureText = !obscureText;
+    });
+  }
+
   List<bool>? get seatSelections => null;
 
   Stream<QuerySnapshot> getItems() {
@@ -333,15 +341,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                             try {
                                               //call onOpenGateButtonPressed() to send order
                                               await onOpenGateButtonPressed(
-                                                  order.id,
-                                                  location,
-                                                  destination,
-                                                  // orderDate,
-                                                  price,
-                                                  travelTime,
-                                                  category,
-                                                  age,
-                                                  path);
+                                                order.id,
+                                                location,
+                                                destination,
+                                                // orderDate,
+                                                price,
+                                                travelTime,
+                                                category,
+                                                age,
+                                                path,
+                                              );
                                             } catch (e) {
                                               print(
                                                   'Error updating status: $e');
@@ -806,6 +815,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 final int ewallet = userData['ewallet'] as int? ?? 0;
                 final String imageUrl =
                     userData['imageUrl'] as String? ?? 'No imageUrl';
+
+                final DateFormat dateFormat = DateFormat('dd-MM-yyyy');
+
+                final Timestamp? startHealthTimestamp =
+                    userData['startHealth'] as Timestamp?;
+                final Timestamp? endHealthTimestamp =
+                    userData['endHealth'] as Timestamp?;
+
+                final DateTime? startHealth = startHealthTimestamp?.toDate();
+                final DateTime? endHealth = endHealthTimestamp?.toDate();
+
+                final String formattedStartHealth = startHealth != null
+                    ? dateFormat.format(startHealth)
+                    : 'No Data';
+
+                final String formattedEndHealth = endHealth != null
+                    ? dateFormat.format(endHealth)
+                    : 'No Data';
+
                 // Add more fields as needed
 
                 return Container(
@@ -859,6 +887,36 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       Text(category, style: const TextStyle(fontSize: 16)),
+                      if (startHealth != null && endHealth != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Start Date:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(formattedStartHealth.toString(),
+                                  style: const TextStyle(fontSize: 16)),
+                              const Text(
+                                'End Date:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(formattedEndHealth.toString(),
+                                  style: const TextStyle(
+                                      fontSize:
+                                          16)), // Add spacing after the section
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 10),
                       const Text(
                         'Age:',
@@ -880,35 +938,44 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(ewallet.toString(),
                           style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Category picture of prove:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                      if (category == 'Handicapped (OKU)' ||
+                          category == 'Senior Citizen' ||
+                          category == 'Health Issues (Prenant, Fever, etc..)')
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Category picture of prove:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                Clipboard.setData(
+                                    ClipboardData(text: imageUrl));
+                                TopOverlay.showMessage(
+                                    context, 'URL copied to clipboard');
+                              },
+                              child: Text(
+                                '$imageUrl',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.blue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundImage: NetworkImage(imageUrl),
+                              backgroundColor: Colors.grey[300],
+                            ),
+                            const SizedBox(height: 20),
+                          ],
                         ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: imageUrl));
-                          TopOverlay.showMessage(
-                              context, 'URL copied to clipboard');
-                        },
-                        child: Text(
-                          '$imageUrl',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.blue,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundImage: NetworkImage(imageUrl),
-                        backgroundColor: Colors.grey[300],
-                      ),
-                      const SizedBox(height: 20),
                       Row(
                         children: [
                           GestureDetector(
@@ -1155,10 +1222,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 20),
                             reuseTextField(
-                                '$userName: $category\n\n${user?.uid}',
-                                Icons.person,
-                                false,
-                                _usernameTextController),
+                              '$userName: $category\n\n${user?.uid}',
+                              Icons.person,
+                              false,
+                              _usernameTextController,
+                              obscureText,
+                              togglePasswordVisibility,
+                            ),
                             const SizedBox(height: 20),
 
                             StreamBuilder<QuerySnapshot>(
