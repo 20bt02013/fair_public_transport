@@ -56,6 +56,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   int? passSeatTry;
   DateTime? passTimeTry;
 
+  bool exitTrigger = false;
+
   @override
   void initState() {
     super.initState();
@@ -67,7 +69,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     fetchUserArriveTime(widget.selectedOrderId);
 
     // Start a periodic timer that checks the conditions every minute
-    _timer = Timer.periodic(const Duration(hours: 10), (Timer timer) {
+    _timer = Timer.periodic(const Duration(seconds: 10), (Timer timer) {
       _checkArrivalConditions();
     });
   }
@@ -94,7 +96,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'category': doc['category'],
             'replacement': doc['replacement'],
             'arriveTime': doc['arriveTime'],
-            'waitingPassenger': doc['waitingPassenger']
+            'waitingPassenger': doc['waitingPassenger'],
+            'waitingPassengerCat': doc['waitingPassengerCat']
           };
         }).toList();
 
@@ -179,38 +182,130 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
       if (passengerId == widget.selectedOrderId &&
           getArriveTime != null &&
-          now.isAfter(getArriveTime)) {
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Alert'),
-              content: const Text('Your ride has arrived!'),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    await removePassenger(
-                        passengerId); // Remove passenger from Firestore
-                    await fetchAllPassengerInfo(
-                        widget.selectedOrderId, widget.passtrainDocId);
-                    // ignore: use_build_context_synchronously
-                    Navigator.of(context).pop(); // Close the dialog
-                    // ignore: use_build_context_synchronously
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) =>
-                                const HomeScreen())); // Close the SeatAssignmentScreen
-                  },
-                  child: const Text('Exit'),
-                ),
-              ],
+          getArriveTime.isBefore(now) &&
+          exitTrigger == false) {
+        for (var seatInfo in allSeatInfo) {
+          if (seatInfo['passengerId'] == widget.selectedOrderId &&
+              seatInfo['waitingPassenger'] != null) {
+            // Do something when the conditions are met
+            final newWaitingPassenger = seatInfo['waitingPassenger'];
+            final newArriveTime = seatInfo['arriveTime'];
+            final newCategory = seatInfo['waitingPassengerCat'];
+
+            // Update seat information
+            FirebaseFirestore.instance
+                .collection('paths')
+                .doc(widget.passPath)
+                .collection('Trains')
+                .doc(widget.passtrainDocId)
+                .collection('Seats')
+                .doc(selectedSeat.toString())
+                .update({
+              'passengerId': newWaitingPassenger,
+              'category': newCategory,
+              'arriveTime': newArriveTime,
+              'seatNumber': selectedSeat,
+              'isSelected': true,
+              'isSeatConfirmed': true,
+              'timeConfirm': now,
+              'replacement': null,
+              'waitingPassenger': null,
+              'waitingPassengerCat': null,
+            });
+
+            // Delete passenger document
+            final passengerDocRef = FirebaseFirestore.instance
+                .collection('paths')
+                .doc(widget.passPath)
+                .collection('Trains')
+                .doc(widget.passtrainDocId)
+                .collection('passengers')
+                .doc(passengerId);
+
+            passengerDocRef.delete();
+
+            // Update the order status to 'Finished'
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(FirebaseAuth.instance.currentUser!.uid)
+                .collection('orders')
+                .doc(widget.selectedOrderId)
+                .update({
+              'status': 'Finished',
+            });
+
+            // Show a dialog or perform other actions
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text('Alert'),
+                  content: const Text(
+                      'Your ride has arrived!, There is waiting Passenger'),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Close the dialog
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const HomeScreen())); // Close the SeatAssignmentScreen
+                      },
+                      child: const Text('Exit'),
+                    ),
+                  ],
+                );
+              },
             );
-          },
-        );
-        break; // Exit the loop after showing the dialog
+
+            // Set exitTrigger
+            setState(() {
+              exitTrigger = true;
+            });
+
+            break; // Exit the loop after showing the dialog
+          } else if (seatInfo['passengerId'] == widget.selectedOrderId &&
+              seatInfo['waitingPassenger'] == null) {
+            // Do something when the conditions are met
+            removePassenger(passengerId); // Remove passenger from Firestore
+            fetchAllPassengerInfo(
+                widget.selectedOrderId, widget.passtrainDocId);
+
+            // Show a dialog or perform other actions
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text('Alert'),
+                  content: const Text(
+                      'Your ride has arrived!, There is waiting Passenger'),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Close the dialog
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const HomeScreen())); // Close the SeatAssignmentScreen
+                      },
+                      child: const Text('Exit'),
+                    ),
+                  ],
+                );
+              },
+            );
+
+            // Set exitTrigger
+            setState(() {
+              exitTrigger = true;
+            });
+
+            break; // Exit the loop after showing the dialog
+          }
+        }
       } else {
-        print('what the heck');
         print(
             'OtherPassId:$passengerId CUrrent user ID:${widget.selectedOrderId} AT:$getArriveTime Now:$now');
       }
@@ -413,7 +508,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               'category': 'Unknown',
               'replacement': null,
               'arriveTime': null,
-              'waitingPassenger': null
+              'waitingPassenger': null,
+              'waitingPassengerCat': null
             },
           );
         }
@@ -648,6 +744,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     if (!isConfirmed) {
       if (allSeatsOccupied &&
           !hasSamePassengerId &&
+          exitTrigger == false &&
           (category == "Health Issues (Prenant, Fever, etc..)" ||
               category == "Handicapped (OKU)" ||
               category == "Senior Citizen")) {
@@ -725,35 +822,33 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
         );
       } else if (allSeatsOccupied &&
           !hasSamePassengerId &&
-          !hasSameWaitingPassenger) {
+          !hasSameWaitingPassenger &&
+          exitTrigger == false) {
         // Find the earliest timeConfirm among all seats
-        DateTime earliestArrivedSeat = DateTime.now();
+        DateTime? earliestArrivedSeat = arriveTime;
         int? earliestArriveSeatNumber;
         //String? removedPassenger;
 
         // Find the earliest arrived seat among occupied seats
         for (final seatInfo in allSeatInfo) {
           final DateTime? seatedArriveTime = seatInfo['arriveTime']?.toDate();
-          final String seatCategory = seatInfo['category'];
+          // final String seatCategory = seatInfo['category'];
           //final passengerRemoved = seatInfo['passengerId'];
           final waitingPassenger = seatInfo['waitingPassenger'];
 
-          if ((seatCategory != "Handicapped (OKU)" &&
-                  seatCategory != "Senior Citizen" &&
-                  seatCategory != "Health Issues (Prenant, Fever, etc..)") &&
-              seatedArriveTime != null &&
-              waitingPassenger == null &&
-              seatedArriveTime.isAfter(earliestArrivedSeat)) {
+          if (seatedArriveTime != null &&
+                  waitingPassenger == null &&
+                  seatedArriveTime.isBefore(earliestArrivedSeat!)
+              //Dan berdiri dalam 20 minit
+              ) {
             earliestArrivedSeat = seatedArriveTime;
             earliestArriveSeatNumber = seatInfo['seatNumber'];
-            //removedPassenger = passengerRemoved;
             print(
                 'working seat: $earliestArriveSeatNumber Time: $earliestArrivedSeat');
           }
         }
 
         if (earliestArriveSeatNumber != null) {
-          // Update the earliest seat's passengerId with widget.selectedOrderId
           FirebaseFirestore.instance
               .collection('paths')
               .doc(path)
@@ -761,23 +856,10 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
               .doc(widget.passtrainDocId)
               .collection('Seats')
               .doc(earliestArriveSeatNumber.toString())
-              .collection('waitingPassenger')
-              .doc(widget.selectedOrderId)
-              .set({
-            'passengerId': widget.selectedOrderId,
-            'category': widget.passCategory,
-            'arriveTime': arriveTime,
-            'timeAssign': earliestArrivedSeat
+              .update({
+            'waitingPassenger': widget.selectedOrderId,
+            'waitingPassengerCat': widget.passCategory
           });
-
-          FirebaseFirestore.instance
-              .collection('paths')
-              .doc(path)
-              .collection('Trains')
-              .doc(widget.passtrainDocId)
-              .collection('Seats')
-              .doc(earliestArriveSeatNumber.toString())
-              .update({'waitingPassenger': widget.selectedOrderId});
 
           print('checking');
         }
@@ -789,12 +871,14 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           ),
           padding: const EdgeInsets.all(8),
           child: Text(
-            "Sorry all seat is occupied, Please wait for your seat number: $earliestArriveSeatNumber Time: $earliestArrivedSeat",
+            "Wait Up, Please wait for your seat number: $earliestArriveSeatNumber Time: $earliestArrivedSeat",
             style:
                 const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
           ),
         );
-      } else if (hasSameWaitingPassenger) {
+      } else if (allSeatsOccupied &&
+          hasSameWaitingPassenger &&
+          exitTrigger == false) {
         int? getSeatNumber;
         DateTime? getTimeAssign;
 
@@ -1064,6 +1148,8 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
                               print('Passenger ID: $passengerId');
                               print('Arrive Time: $arriveTime\n');
+
+                              print('Waiting Passenger: $allSeatInfo');
                             }
                           },
                           child: const Row(
@@ -1122,7 +1208,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                           left: 15.0, top: 20.0),
                                       child: Text(
                                         'Choose your seat.. $isSeatConfirmed \n ${widget.selectedOrderId} \n $selectedSeat ${widget.passCategory}   '
-                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation} $arriveTime ',
+                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation} ${widget.passselectedDestination} $arriveTime $exitTrigger',
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold),
