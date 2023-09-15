@@ -49,7 +49,9 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   late StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
       seatListener; // Add this line
 
-  DateTime? arriveTime;
+  DateTime? userArriveTime;
+  DateTime? trainAriveTime;
+  DateTime? trainDepartTime;
 
   late Timer _timer; // Timer instance for periodic checks
 
@@ -57,6 +59,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
   DateTime? passTimeTry;
 
   bool exitTrigger = false;
+  bool? trainArrive = false;
 
   @override
   void initState() {
@@ -68,9 +71,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     fetchAllPassengerInfo(widget.passPath, widget.passtrainDocId);
     fetchUserArriveTime(widget.selectedOrderId);
 
+    // Call handleTimer once immediately after creating the timer
+    handleTimer();
+
     // Start a periodic timer that checks the conditions every minute
     _timer = Timer.periodic(const Duration(seconds: 10), (Timer timer) {
-      _checkArrivalConditions();
+      // Call the handleTimer function immediately to trigger it once
+      handleTimer();
     });
   }
 
@@ -171,6 +178,55 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     seatListener.cancel(); // Cancel the listener when the widget is disposed
     _timer.cancel(); // Cancel the timer when the widget is disposed
     super.dispose();
+  }
+
+  Future<void> handleTimer() async {
+    final currentTime = DateTime.now();
+
+    _checkArrivalConditions();
+
+    print('checking the occurance');
+
+    if (trainAriveTime != null && trainAriveTime!.isBefore(currentTime)) {
+      FirebaseFirestore.instance
+          .collection('paths')
+          .doc(widget.passPath)
+          .collection('Trains')
+          .doc(widget.passtrainDocId)
+          .collection('passengers')
+          .doc(widget.selectedOrderId)
+          .update({
+        'trainArrive': true,
+      });
+
+      if (trainArrive == false) {
+        final path = widget.passPath;
+        final trainDocId = widget.passtrainDocId;
+
+        final passengerDocRef = FirebaseFirestore.instance
+            .collection('paths')
+            .doc(path)
+            .collection('Trains')
+            .doc(trainDocId)
+            .collection('passengers')
+            .doc(widget.selectedOrderId);
+
+        final snapshot = await passengerDocRef.get();
+
+        if (snapshot.exists) {
+          // Check if the document exists
+          final passengerInfo = snapshot.data() as Map<String, dynamic>;
+
+          final bool? fetchTrainArrive = passengerInfo['trainArrive'] as bool?;
+
+          setState(() {
+            trainArrive = fetchTrainArrive;
+          });
+        } else {
+          print('uncessfull');
+        }
+      }
+    }
   }
 
   void _checkArrivalConditions() {
@@ -385,21 +441,35 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
       final Timestamp? fetchedArriveTimeTimestamp =
           passengerInfo['arriveTime'] as Timestamp?;
+      final Timestamp? fetchedArriveTrainTimeTimestamp =
+          passengerInfo['trainArriveTime'] as Timestamp?;
+      final Timestamp? fetchedDepartTrainTimeTimestamp =
+          passengerInfo['trainDepartTime'] as Timestamp?;
+
+      final bool? fetchTrainArrive = passengerInfo['trainArrive'] as bool?;
 
       DateTime? fetchedArriveTime;
+      DateTime? fetchedArriveTrainTime;
+      DateTime? fetchedDepartTrainTime;
 
-      if (fetchedArriveTimeTimestamp != null) {
+      if (fetchedArriveTimeTimestamp != null &&
+          fetchedDepartTrainTimeTimestamp != null) {
         fetchedArriveTime = fetchedArriveTimeTimestamp.toDate();
+        fetchedArriveTrainTime = fetchedArriveTrainTimeTimestamp?.toDate();
+        fetchedDepartTrainTime = fetchedDepartTrainTimeTimestamp.toDate();
       }
 
       setState(() {
-        arriveTime = fetchedArriveTime;
+        userArriveTime = fetchedArriveTime?.subtract(Duration(seconds: 15));
+        trainAriveTime = fetchedArriveTrainTime;
+        trainDepartTime = fetchedDepartTrainTime;
+        trainArrive = fetchTrainArrive;
       });
     } else {
       setState(() {
-        arriveTime = null;
+        userArriveTime = null;
       });
-      print('fetchPassengerArrive $arriveTime');
+      print('fetchPassengerArrive $userArriveTime');
     }
   }
 
@@ -547,6 +617,10 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
     bool isSelectable = true; // Determine whether the seat is selectable
 
     if (isSeatConfirmed && passengerId != widget.selectedOrderId) {
+      isSelectable = false;
+    }
+
+    if (trainArrive == false) {
       isSelectable = false;
     }
 
@@ -729,7 +803,6 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
     final String category = widget.passCategory;
     final String path = widget.passPath;
-
     // Check if all seats are occupied
     final bool allSeatsOccupied =
         allSeatInfo.every((seatInfo) => seatInfo['isSeatConfirmed'] == true);
@@ -741,7 +814,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
 
     print('allSeatsOccupied: $allSeatsOccupied');
 
-    if (!isConfirmed) {
+    if (!isConfirmed && trainArrive == true) {
       if (allSeatsOccupied &&
           !hasSamePassengerId &&
           exitTrigger == false &&
@@ -786,7 +859,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'timeConfirm': DateTime.now(),
             'category': widget.passCategory,
             'replacement': removedPassenger,
-            'arriveTime': arriveTime
+            'arriveTime': userArriveTime
           });
 
           // Update local state and other necessary operations
@@ -825,26 +898,30 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           !hasSameWaitingPassenger &&
           exitTrigger == false) {
         // Find the earliest timeConfirm among all seats
-        DateTime? earliestArrivedSeat = arriveTime;
+        DateTime? earliestArrivedSeat = userArriveTime;
         int? earliestArriveSeatNumber;
-        //String? removedPassenger;
 
         // Find the earliest arrived seat among occupied seats
         for (final seatInfo in allSeatInfo) {
           final DateTime? seatedArriveTime = seatInfo['arriveTime']?.toDate();
-          // final String seatCategory = seatInfo['category'];
-          //final passengerRemoved = seatInfo['passengerId'];
           final waitingPassenger = seatInfo['waitingPassenger'];
 
           if (seatedArriveTime != null &&
-                  waitingPassenger == null &&
-                  seatedArriveTime.isBefore(earliestArrivedSeat!)
-              //Dan berdiri dalam 20 minit
-              ) {
+              waitingPassenger == null &&
+              seatedArriveTime.isBefore(earliestArrivedSeat!) &&
+              // Check if the time difference is less than or equal to 20 minutes
+              trainDepartTime!.difference(seatedArriveTime).inMinutes <= 20) {
             earliestArrivedSeat = seatedArriveTime;
             earliestArriveSeatNumber = seatInfo['seatNumber'];
             print(
-                'working seat: $earliestArriveSeatNumber Time: $earliestArrivedSeat');
+                'working seat: $earliestArriveSeatNumber Time: $earliestArrivedSeat Start: $trainDepartTime seatedAT: $seatedArriveTime');
+          } else if (seatedArriveTime != null &&
+              waitingPassenger == null &&
+              seatedArriveTime.isBefore(earliestArrivedSeat!) &&
+              // Check if the time difference is less than or equal to 20 minutes
+              trainDepartTime!.difference(seatedArriveTime).inMinutes > 20) {
+            print(
+                'more than 20 min standing check, Mula masuk train dan berdiri $trainDepartTime seatedArriveTime:$seatedArriveTime');
           }
         }
 
@@ -904,6 +981,20 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
           child: const Text("Confirm Seat"),
         );
       }
+    } else if (!isConfirmed && trainArrive == false) {
+      return Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.red, width: 2),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white60,
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          "Please wait for your train to arrive before the system allocates the best seat for you, or select a preferred seat if it is not full. Train:${widget.passtrainDocId} Train Arrive Time: $trainAriveTime",
+          style:
+              const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+      );
     } else {
       return Column(
         children: [
@@ -1016,19 +1107,13 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
             'isSeatConfirmed': true,
             'timeConfirm': now,
             'category': widget.passCategory,
-            'arriveTime': arriveTime
+            'arriveTime': userArriveTime
           },
           SetOptions(merge: true),
         );
 
         // Commit the batch
         await batch.commit();
-
-        // // Update local state to reflect the confirmation
-        // setState(() {
-        //   isSeatConfirmed = true;
-        //   // Remove this line, as you don't need to update selectedSeat here
-        // });
 
         print("Seat Confirmed");
       }
@@ -1114,7 +1199,10 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                         padding: const EdgeInsets.all(5.0),
                         child: GestureDetector(
                           onTap: () {
-                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const HomeScreen()));
                           },
                           child: const Row(
                             children: [
@@ -1208,7 +1296,7 @@ class _SeatAssignmentScreenState extends State<SeatAssignmentScreen> {
                                           left: 15.0, top: 20.0),
                                       child: Text(
                                         'Choose your seat.. $isSeatConfirmed \n ${widget.selectedOrderId} \n $selectedSeat ${widget.passCategory}   '
-                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation} ${widget.passselectedDestination} $arriveTime $exitTrigger',
+                                        'age:${widget.passAge}  Ttime:${widget.passTraveltime} path:${widget.passPath} train:${widget.passtrainDocId} \n ${widget.passselectedLocation} ${widget.passselectedDestination} AT:$userArriveTime exit:$exitTrigger  TrainArrive:$trainAriveTime TrainDeparture:$trainDepartTime ',
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold),

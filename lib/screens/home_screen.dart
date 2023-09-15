@@ -171,7 +171,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     'path': newPath
                   };
 
-                  await ordersCollection.add(orderData);
+                  // Add the order and get the newly generated order ID
+                  final DocumentReference orderDocRef =
+                      await ordersCollection.add(orderData);
+
+                  // Create a gatePass document with the order ID as the document ID
+                  await FirebaseFirestore.instance
+                      .collection('gatePass')
+                      .doc(orderDocRef
+                          .id) // Use the newly generated order ID as the gatePass document ID
+                      .set({
+                    'openGatePress': false,
+                    'successPass': false,
+                  });
+
                   setState(() {
                     deductedAmount = 0; // Reset the deducted amount
                   });
@@ -337,24 +350,53 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Column(
                                       children: [
                                         GestureDetector(
-                                          onTap: () async {
-                                            try {
-                                              //call onOpenGateButtonPressed() to send order
-                                              await onOpenGateButtonPressed(
-                                                order.id,
-                                                location,
-                                                destination,
-                                                // orderDate,
-                                                price,
-                                                travelTime,
-                                                category,
-                                                age,
-                                                path,
-                                              );
-                                            } catch (e) {
-                                              print(
-                                                  'Error updating status: $e');
-                                            }
+                                          onTap: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (BuildContext context) {
+                                                return AlertDialog(
+                                                  title: const Text(
+                                                      'Gate Opening Alert'),
+                                                  content: const Text(
+                                                      'Make sure you are near the gate before clicking Confirm button!'),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () async {
+                                                        // ignore: use_build_context_synchronously
+                                                        Navigator.pop(context);
+                                                        try {
+                                                          //call onOpenGateButtonPressed() to send order
+                                                          await onOpenGateButtonPressed(
+                                                            order.id,
+                                                            location,
+                                                            destination,
+                                                            // orderDate,
+                                                            price,
+                                                            travelTime,
+                                                            category,
+                                                            age,
+                                                            path,
+                                                          );
+                                                        } catch (e) {
+                                                          print(
+                                                              'Error updating status: $e');
+                                                        }
+                                                      },
+                                                      child:
+                                                          const Text('Confirm'),
+                                                    ),
+                                                    TextButton(
+                                                      onPressed: () {
+                                                        Navigator.of(context)
+                                                            .pop(); // Close the dialog
+                                                      },
+                                                      child:
+                                                          const Text('Cancel'),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            );
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(
@@ -417,19 +459,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                               MaterialPageRoute(
                                                 builder: (context) =>
                                                     SeatAssignmentScreen(
-                                                        selectedOrderId:
-                                                            order.id,
-                                                        passselectedLocation:
-                                                            location,
-                                                        passselectedDestination:
-                                                            destination,
-                                                        passtrainDocId:
-                                                            trainDocId,
-                                                        passAge: age,
-                                                        passCategory: category,
-                                                        passTraveltime:
-                                                            travelTime,
-                                                        passPath: path),
+                                                  selectedOrderId: order.id,
+                                                  passselectedLocation:
+                                                      location,
+                                                  passselectedDestination:
+                                                      destination,
+                                                  passtrainDocId: trainDocId,
+                                                  passAge: age,
+                                                  passCategory: category,
+                                                  passTraveltime: travelTime,
+                                                  passPath: path,
+                                                ),
                                               ),
                                             );
                                           },
@@ -510,6 +550,57 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Define a function to show the AlertDialog
+  void _showAlertDialog(BuildContext context, String text) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+              sigmaX: 5.0, sigmaY: 5.0), // Adjust the blur intensity as needed
+          child: AlertDialog(
+            backgroundColor: Colors.transparent,
+            title: const Text(
+              'Alert Title',
+              style: TextStyle(
+                fontSize: 20, // Change the font size as needed
+                fontWeight: FontWeight.bold, // You can change the font weight
+                color: Colors.blue, // Change the text color
+                // You can add more properties like fontFamily, letterSpacing, etc.
+              ),
+            ),
+            content: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 25, // Change the font size as needed
+                color: Colors.white, // Change the text color
+                fontWeight: FontWeight.bold,
+                // You can add more properties like fontWeight, fontFamily, etc.
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    fontSize: 16, // Change the font size as needed
+                    fontWeight:
+                        FontWeight.bold, // You can change the font weight
+                    color: Colors.blue, // Change the text color
+                    // You can add more properties like fontFamily, letterSpacing, etc.
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close the AlertDialog
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> onOpenGateButtonPressed(
     String orderId,
     String selectedLocation,
@@ -537,6 +628,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Initialize variables to track the nearest departure time and train document ID
     String nearestTrainDocId = '';
     DateTime? nearestDepartTime;
+    DateTime? nearestTrainArriveTime;
 
     // Iterate through the train data to find the nearest departure time after the current time
     for (DocumentSnapshot trainDoc in trainSnapshot.docs) {
@@ -549,6 +641,11 @@ class _HomeScreenState extends State<HomeScreen> {
       int departHour = int.parse(departTimeString.split(':')[0]);
       int departMinute = int.parse(departTimeString.split(':')[1]);
 
+      // Inside the for loop
+      String arriveTimeString = trainData['Arrive'] as String;
+      int arriveHour = int.parse(arriveTimeString.split(':')[0]);
+      int arriveMinute = int.parse(arriveTimeString.split(':')[1]);
+
       DateTime departTime = DateTime(
         now.year,
         now.month,
@@ -557,13 +654,23 @@ class _HomeScreenState extends State<HomeScreen> {
         departMinute,
       );
 
+      DateTime trainArriveTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        arriveHour,
+        arriveMinute,
+      );
+
       if (departTime.isAfter(now)) {
         print('Depart time: $departTime');
         print('Now: $now');
 
         nearestTrainDocId = train;
         nearestDepartTime = departTime;
+        nearestTrainArriveTime = trainArriveTime;
         print('nearestDepartTime: $nearestDepartTime');
+
         break; // Exit the loop after finding the nearest departure
       }
     }
@@ -574,7 +681,7 @@ class _HomeScreenState extends State<HomeScreen> {
           nearestDepartTime.add(Duration(minutes: travelTime));
 
       print('arriveTime: $arriveTime');
-      // Rest of the code remains the same...
+
       // Create the user's order data using the current time in UTC+8
       Map<String, dynamic> orderData = {
         'userName': userName, // Replace with the user's name
@@ -589,35 +696,89 @@ class _HomeScreenState extends State<HomeScreen> {
         'travel time': travelTime,
         'path': path,
         'trainDocId': nearestTrainDocId,
-        'arriveTime': arriveTime
+        'arriveTime': arriveTime,
+        'trainArriveTime': nearestTrainArriveTime,
+        'trainDepartTime': nearestDepartTime,
+        'trainArrive': false
         // Add other relevant order information here
       };
 
-      // Save the user's order in the "passengers" collection under the specific train document
+      // Update openGatePress
       await FirebaseFirestore.instance
-          .collection('paths')
-          .doc(path)
-          .collection('Trains')
-          .doc(nearestTrainDocId) // Use nearestTrainDocId here
-          .collection('passengers')
-          .doc(orderId) // Use the order ID as the document ID
-          .set(orderData); // Use 'set' instead of 'add'
+          .collection('gatePass')
+          .doc(orderId)
+          .update({'openGatePress': true});
 
-      // Update the status in Firestore to 'On Ride'
-      final orderRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(FirebaseAuth.instance.currentUser!.uid)
-          .collection('orders')
-          .doc(orderId); // Replace 'order.id' with the actual order document ID
+      // Function to check successPass condition
+      Future<bool> isSuccessPass() {
+        // Perform a query to check if successPass is true
+        return FirebaseFirestore.instance
+            .collection('gatePass')
+            .doc(orderId)
+            .get()
+            .then((DocumentSnapshot documentSnapshot) {
+          if (documentSnapshot.exists) {
+            Map<String, dynamic> data =
+                documentSnapshot.data() as Map<String, dynamic>;
+            bool successPass = data['successPass'] ?? false;
+            return successPass;
+          } else {
+            return false; // Document not found, consider as false
+          }
+        }).catchError((error) {
+          print('Error checking successPass: $error');
+          return false;
+        });
+      }
 
-      await orderRef
-          .update({'status': 'On Ride', 'trainDocId': nearestTrainDocId});
+      _showAlertDialog(context, 'Please enter the gate');
 
-      // ignore: use_build_context_synchronously
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SeatAssignmentScreen(
+      // Wait for isSuccessPass with a timeout
+      const int timeoutInSeconds = 10;
+      bool successPass = false;
+
+      for (int secondsRemaining = timeoutInSeconds;
+          secondsRemaining > 0;
+          secondsRemaining--) {
+        print('Countdown: $secondsRemaining seconds remaining...');
+
+        // Check isSuccessPass while counting down
+        successPass = await isSuccessPass();
+        if (successPass) {
+          break; // Exit the loop if isSuccessPass is true before the timeout
+        }
+
+        // Delay for 1 second before the next countdown iteration
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      if (successPass) {
+        // Save the user's order in the "passengers" collection under the specific train document
+        await FirebaseFirestore.instance
+            .collection('paths')
+            .doc(path)
+            .collection('Trains')
+            .doc(nearestTrainDocId)
+            .collection('passengers')
+            .doc(orderId)
+            .set(orderData);
+
+        // Update the status in Firestore to 'On Ride'
+        final orderRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .collection('orders')
+            .doc(orderId);
+
+        await orderRef
+            .update({'status': 'On Ride', 'trainDocId': nearestTrainDocId});
+
+        // Navigate to the SeatAssignmentScreen
+        // ignore: use_build_context_synchronously
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SeatAssignmentScreen(
               selectedOrderId: orderId,
               passselectedLocation: selectedLocation,
               passselectedDestination: selectedDestination,
@@ -625,10 +786,22 @@ class _HomeScreenState extends State<HomeScreen> {
               passAge: age,
               passCategory: category,
               passTraveltime: travelTime,
-              passPath: path),
-        ),
-      );
-      print('${nearestTrainDocId}');
+              passPath: path,
+            ),
+          ),
+        );
+
+        print('Success pass');
+      } else {
+        // Update openGatePress
+        await FirebaseFirestore.instance
+            .collection('gatePass')
+            .doc(orderId)
+            .update({'openGatePress': false});
+
+        // Show a message or take appropriate action for unsuccessful pass
+        print('Please try again');
+      }
     } else {
       // Show a message to the user that no suitable train was found
       print("No suitable train found");
@@ -1711,7 +1884,8 @@ class TopOverlay {
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: 20,
+                        decoration: TextDecoration.none, // Remove underlines
                       ),
                     ),
                   ),
